@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+    <title>BAAGFRESH — Pure & Authentic Dry Fruits & Spices | Varanasi</title>
+    <meta name="description" content="Shop premium dry fruits, whole spices, seeds and royal gift hampers sourced directly from authentic orchards." />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800&family=Montserrat:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌿</text></svg>" />
+    <script>
+      (function() {
+        var isSuppressed = function(err) {
+          if (!err) return false;
+          var msg = '';
+          try {
+            if (typeof err === 'string') {
+              msg = err;
+            } else if (err instanceof Error) {
+              msg = err.message + ' ' + (err.stack || '');
+            } else if (typeof err === 'object') {
+              msg = JSON.stringify(err);
+            } else {
+              msg = String(err);
+            }
+          } catch(e) {
+            msg = String(err);
+          }
+          if (typeof msg !== 'string') return false;
+          var lower = msg.toLowerCase();
+          return (
+            lower.indexOf('metamask') !== -1 ||
+            lower.indexOf('ethereum') !== -1 ||
+            lower.indexOf('web3') !== -1 ||
+            lower.indexOf('wallet') !== -1 ||
+            lower.indexOf('phantom') !== -1 ||
+            lower.indexOf('solana') !== -1 ||
+            lower.indexOf('coinbase') !== -1 ||
+            lower.indexOf('extension context') !== -1 ||
+            lower.indexOf('chrome-extension') !== -1 ||
+            lower.indexOf('resizeobserver') !== -1 ||
+            lower.indexOf('websocket') !== -1 ||
+            lower.indexOf('closed without opened') !== -1 ||
+            lower.indexOf('failed to connect to') !== -1 ||
+            lower.indexOf('error restoring session') !== -1 ||
+            lower.indexOf('user rejected') !== -1
+          );
+        };
+
+        // Intercept console.warn and console.error for third-party extensions
+        var origWarn = console.warn;
+        console.warn = function() {
+          for (var i = 0; i < arguments.length; i++) {
+            if (isSuppressed(arguments[i])) return;
+          }
+          return origWarn.apply(console, arguments);
+        };
+
+        var origError = console.error;
+        console.error = function() {
+          for (var i = 0; i < arguments.length; i++) {
+            if (isSuppressed(arguments[i])) return;
+          }
+          return origError.apply(console, arguments);
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (isSuppressed(event.reason) || (event.reason && isSuppressed(event.reason.message))) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return false;
+          }
+        }, true);
+
+        window.addEventListener('error', function(event) {
+          if (isSuppressed(event.message) || isSuppressed(event.error)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return false;
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+  <body class="bg-[#fcfaf5] text-[#1b2b23] antialiased selection:bg-[#fed65b] selection:text-[#012d1d]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

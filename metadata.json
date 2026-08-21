@@ -1,0 +1,6 @@
+{
+  "name": "BAAGFRESH - Premium Dry Fruits & Spices",
+  "description": "Authentic dry fruits, whole spices, seeds and royal gifting hampers from Varanasi, India with multi-currency, secure checkout, live tracking, and profile management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

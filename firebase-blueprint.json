@@ -1,0 +1,176 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "Registered customer profiles and preferences",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "description": "Full customer name" },
+        "email": { "type": "string", "description": "Customer email" },
+        "phone": { "type": "string", "description": "Contact number" },
+        "avatar": { "type": "string", "description": "Profile avatar URL" },
+        "memberSince": { "type": "string", "description": "Date joined" },
+        "addresses": { "type": "array", "description": "Saved delivery addresses" },
+        "is2FAEnabled": { "type": "boolean", "description": "2FA status" },
+        "e2eEncryptionKeyFingerprint": { "type": "string", "description": "Security fingerprint" },
+        "cloudSyncEnabled": { "type": "boolean", "description": "Cloud synchronization status" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+      },
+      "required": ["id", "email"]
+    },
+    "orders": {
+      "title": "Customer Order",
+      "description": "Orders placed for dry fruits, spices, and hampers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique order ID" },
+        "userId": { "type": "string", "description": "Customer Auth UID" },
+        "userEmail": { "type": "string", "description": "Customer email" },
+        "orderNumber": { "type": "string", "description": "Tracking number" },
+        "date": { "type": "string", "description": "Order creation date string" },
+        "items": { "type": "array", "description": "List of ordered items with quantities and weights" },
+        "subtotal": { "type": "number", "description": "Subtotal amount in INR" },
+        "discount": { "type": "number", "description": "Discount applied" },
+        "promoCode": { "type": "string", "description": "Applied promo code" },
+        "shippingFee": { "type": "number", "description": "Delivery charge" },
+        "tax": { "type": "number", "description": "GST amount" },
+        "total": { "type": "number", "description": "Final paid amount" },
+        "currency": { "type": "string", "description": "Currency used" },
+        "status": { "type": "string", "description": "Order lifecycle status" },
+        "shippingAddress": { "type": "object", "description": "Delivery address" },
+        "paymentMethod": { "type": "string", "description": "Payment gateway chosen" },
+        "paymentStatus": { "type": "string", "description": "Payment status" },
+        "trackingSteps": { "type": "array", "description": "Shipment tracking milestone steps" },
+        "eta": { "type": "string", "description": "Estimated delivery time" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["id", "userId", "items", "total", "status"]
+    },
+    "wishlists": {
+      "title": "User Wishlist",
+      "description": "Saved favorite products per user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Auth UID" },
+        "productIds": { "type": "array", "description": "List of product IDs" },
+        "updatedAt": { "type": "string", "description": "Update timestamp" }
+      },
+      "required": ["userId", "productIds"]
+    },
+    "admins": {
+      "title": "Administrator Roles",
+      "description": "Authenticated users who have administrative permissions to manage catalog, orders, and store settings",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "Admin email address" },
+        "role": { "type": "string", "description": "Admin role level e.g. superadmin, store_manager" },
+        "createdAt": { "type": "string", "description": "Timestamp when admin role was granted" }
+      },
+      "required": ["email", "role"]
+    },
+    "reviews": {
+      "title": "Product Review",
+      "description": "Customer feedback and ratings for items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Review ID" },
+        "productId": { "type": "string", "description": "Reviewed product ID" },
+        "userId": { "type": "string", "description": "Reviewer UID" },
+        "author": { "type": "string", "description": "Reviewer name" },
+        "location": { "type": "string", "description": "Reviewer city" },
+        "rating": { "type": "number", "description": "Star rating 1-5" },
+        "date": { "type": "string", "description": "Review date" },
+        "verifiedBuyer": { "type": "boolean", "description": "Verified purchase badge" },
+        "title": { "type": "string", "description": "Review title" },
+        "comment": { "type": "string", "description": "Review content" },
+        "likes": { "type": "number", "description": "Like count" }
+      },
+      "required": ["id", "productId", "rating", "author", "comment"]
+    },
+    "products": {
+      "title": "Product Catalog Item",
+      "description": "Synchronized product details, stock, pricing, and pack options",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Product ID" },
+        "name": { "type": "string", "description": "Product title" },
+        "category": { "type": "string", "description": "Category slug" },
+        "basePrice": { "type": "number", "description": "Starting price in INR" },
+        "originalPrice": { "type": "number", "description": "Original MRP before discount" },
+        "rating": { "type": "number", "description": "Average review rating" },
+        "reviewCount": { "type": "number", "description": "Total review count" },
+        "inStock": { "type": "boolean", "description": "Inventory stock availability" },
+        "isOrganic": { "type": "boolean", "description": "Organic harvest certificate" },
+        "isBestSeller": { "type": "boolean", "description": "Bestseller badge" },
+        "isNew": { "type": "boolean", "description": "New harvest badge" },
+        "description": { "type": "string", "description": "Product description" },
+        "origin": { "type": "string", "description": "Harvest location / terroir" },
+        "benefits": { "type": "array", "description": "Key health and nutritional benefits" },
+        "packOptions": { "type": "array", "description": "Available weight variants and pricing tiers" },
+        "image": { "type": "string", "description": "Primary product image URL" },
+        "gallery": { "type": "array", "description": "Additional gallery image URLs" },
+        "updatedAt": { "type": "string", "description": "Timestamp of last modification" }
+      },
+      "required": ["id", "name", "category", "basePrice", "inStock"]
+    },
+    "store_settings": {
+      "title": "Global Store Configuration",
+      "description": "Storewide settings including announcements, delivery thresholds, and contact information",
+      "type": "object",
+      "properties": {
+        "storeName": { "type": "string", "description": "Brand name" },
+        "tagline": { "type": "string", "description": "Store tagline" },
+        "announcementText": { "type": "string", "description": "Top banner marquee text" },
+        "announcementActive": { "type": "boolean", "description": "Top announcement visibility" },
+        "freeShippingThreshold": { "type": "number", "description": "Order amount for free delivery in INR" },
+        "flatShippingFee": { "type": "number", "description": "Standard delivery fee in INR" },
+        "taxRatePercent": { "type": "number", "description": "Applicable GST percentage" },
+        "supportPhone": { "type": "string", "description": "Customer care phone number" },
+        "supportEmail": { "type": "string", "description": "Official support email" },
+        "hubAddress": { "type": "string", "description": "Central warehouse and dispatch facility address" },
+        "isStoreLive": { "type": "boolean", "description": "Store active or maintenance state" },
+        "allowCOD": { "type": "boolean", "description": "Enable Cash on Delivery option" },
+        "maintenanceNotice": { "type": "string", "description": "Message during maintenance mode" },
+        "updatedAt": { "type": "string", "description": "Timestamp of last settings update" }
+      },
+      "required": ["storeName", "freeShippingThreshold", "flatShippingFee"]
+    },
+    "promos": {
+      "title": "Promo Code",
+      "description": "Discount vouchers and promotional coupon campaigns",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique promo ID" },
+        "code": { "type": "string", "description": "Coupon code string" },
+        "discountPercent": { "type": "number", "description": "Percentage discount rate" },
+        "flatDiscount": { "type": "number", "description": "Flat amount discount in INR" },
+        "minOrderValue": { "type": "number", "description": "Minimum subtotal required" },
+        "maxDiscount": { "type": "number", "description": "Cap on maximum discount in INR" },
+        "description": { "type": "string", "description": "Promo explanation" },
+        "isActive": { "type": "boolean", "description": "Whether promo is active" },
+        "usageCount": { "type": "number", "description": "Total times coupon was redeemed" },
+        "expiryDate": { "type": "string", "description": "Expiration date string" }
+      },
+      "required": ["id", "code", "isActive"]
+    },
+    "wholesale_inquiries": {
+      "title": "Wholesale Inquiry",
+      "description": "B2B and bulk institutional inquiries submitted by clients",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Inquiry ID" },
+        "companyName": { "type": "string", "description": "Corporate or client company name" },
+        "contactPerson": { "type": "string", "description": "Contact representative name" },
+        "email": { "type": "string", "description": "Official contact email" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "requirement": { "type": "string", "description": "Requirement details" },
+        "estimatedQuantity": { "type": "string", "description": "Requested bulk volume" },
+        "date": { "type": "string", "description": "Submission date" },
+        "status": { "type": "string", "description": "Inquiry review status" },
+        "notes": { "type": "string", "description": "Internal administrative notes" }
+      },
+      "required": ["id", "companyName", "contactPerson", "email", "phone"]
+    }
+  }
+}

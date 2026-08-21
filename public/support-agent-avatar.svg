@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <clipPath id="circleClip">
+      <circle cx="250" cy="250" r="230" />
+    </clipPath>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EFF4FB" />
+      <stop offset="100%" stop-color="#E2ECF8" />
+    </linearGradient>
+    <linearGradient id="headsetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7CA3E8" />
+      <stop offset="100%" stop-color="#5A88DC" />
+    </linearGradient>
+  </defs>
+
+  <!-- Circular Background -->
+  <circle cx="250" cy="250" r="230" fill="url(#bgGrad)" />
+
+  <g clip-path="url(#circleClip)">
+    <!-- Ponytail Hair (Back) -->
+    <path d="M 270 120 C 330 110 380 180 370 260 C 360 330 310 370 290 380 C 320 330 340 260 320 200 C 310 170 290 140 270 120 Z" fill="#1C3879" />
+    <!-- Hair tie -->
+    <ellipse cx="295" cy="150" rx="14" ry="18" fill="#FF6B4A" transform="rotate(-20 295 150)" />
+
+    <!-- Body / Shoulders (Coral-Orange Top) -->
+    <path d="M 150 400 C 150 350 180 310 230 300 L 270 300 C 320 310 350 350 350 400 L 370 500 L 130 500 Z" fill="#FF5E4D" />
+
+    <!-- Neck -->
+    <rect x="232" y="270" width="36" height="50" fill="#FEDBC7" rx="6" />
+
+    <!-- White Collar -->
+    <polygon points="250,335 210,295 238,295" fill="#FFFFFF" />
+    <polygon points="250,335 290,295 262,295" fill="#FFFFFF" />
+
+    <!-- Face / Head -->
+    <ellipse cx="250" cy="235" rx="62" ry="72" fill="#FEDBC7" />
+
+    <!-- Front Hair / Bangs -->
+    <path d="M 188 230 C 185 170 210 120 270 120 C 315 120 325 160 315 210 C 310 170 280 145 250 145 C 215 145 195 185 188 230 Z" fill="#1C3879" />
+    <path d="M 195 180 C 220 185 245 170 260 155 C 240 185 210 215 190 220 Z" fill="#1C3879" />
+    <path d="M 285 150 C 305 175 315 205 312 245 C 320 210 310 170 285 150 Z" fill="#1C3879" />
+
+    <!-- Eyebrows -->
+    <path d="M 215 200 Q 228 194 238 200" stroke="#1C3879" stroke-width="4" stroke-linecap="round" fill="none" />
+    <path d="M 262 200 Q 272 194 285 200" stroke="#1C3879" stroke-width="4" stroke-linecap="round" fill="none" />
+
+    <!-- Eyes -->
+    <ellipse cx="228" cy="216" rx="6.5" ry="8" fill="#1C3879" />
+    <ellipse cx="272" cy="216" rx="6.5" ry="8" fill="#1C3879" />
+    <circle cx="226" cy="213" r="2.5" fill="#FFFFFF" />
+    <circle cx="270" cy="213" r="2.5" fill="#FFFFFF" />
+
+    <!-- Cute Blush -->
+    <ellipse cx="212" cy="235" rx="8" ry="4.5" fill="#FFAAA0" opacity="0.6" />
+    <ellipse cx="288" cy="235" rx="8" ry="4.5" fill="#FFAAA0" opacity="0.6" />
+
+    <!-- Nose -->
+    <path d="M 250 220 Q 254 234 246 238" stroke="#E5AC95" stroke-width="3" stroke-linecap="round" fill="none" />
+
+    <!-- Cheerful Smile -->
+    <path d="M 238 250 Q 250 268 262 250 Z" fill="#FFFFFF" />
+    <path d="M 236 250 Q 250 268 264 250" stroke="#E55B5B" stroke-width="2.5" fill="none" />
+
+    <!-- Headset Headband -->
+    <path d="M 192 230 C 190 145 310 145 308 230" stroke="#CBDCF8" stroke-width="12" stroke-linecap="round" fill="none" />
+    <path d="M 194 230 C 192 152 308 152 306 230" stroke="#8EAFEB" stroke-width="6" stroke-linecap="round" fill="none" />
+
+    <!-- Ear Cushions -->
+    <ellipse cx="190" cy="235" rx="14" ry="24" fill="url(#headsetGrad)" />
+    <ellipse cx="310" cy="235" rx="14" ry="24" fill="url(#headsetGrad)" />
+
+    <!-- Microphone Boom -->
+    <path d="M 310 245 Q 295 285 255 272" stroke="#8EAFEB" stroke-width="5" stroke-linecap="round" fill="none" />
+    <rect x="242" y="267" width="16" height="8" rx="4" fill="#5A88DC" />
+
+    <!-- Laptop In Front -->
+    <path d="M 140 350 L 360 350 L 375 500 L 125 500 Z" fill="#D3E0EA" />
+    <circle cx="250" cy="415" r="18" fill="#9FBAD3" />
+  </g>
+</svg>

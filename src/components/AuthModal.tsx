@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   X, 
   ShieldCheck, 
@@ -13,11 +13,7 @@ import {
   Cloud,
   LogOut,
   ExternalLink,
-  Loader2,
-  Terminal,
-  ChevronDown,
-  ChevronUp,
-  RotateCcw
+  Loader2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { 
@@ -29,7 +25,7 @@ import {
   logOut,
   ADMIN_EMAILS
 } from '../lib/firebase';
-import { authLogger, AuthLogEntry } from '../utils/authLogger';
+import { authLogger } from '../utils/authLogger';
 
 export const AuthModal: React.FC = () => {
   const { 
@@ -49,18 +45,6 @@ export const AuthModal: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [diagnosticLogs, setDiagnosticLogs] = useState<AuthLogEntry[]>([]);
-
-  useEffect(() => {
-    if (isAuthOpen) {
-      setDiagnosticLogs(authLogger.getHistory());
-    }
-  }, [isAuthOpen]);
-
-  const refreshLogs = () => {
-    setDiagnosticLogs(authLogger.getHistory());
-  };
 
   const handleOpenInNewTab = () => {
     try {
@@ -80,7 +64,6 @@ export const AuthModal: React.FC = () => {
     setLoading(true);
     setError(null);
     authLogger.startSession('Password Reset Request');
-    refreshLogs();
     try {
       await sendPasswordResetLink(email);
       setSuccessMessage(`Password recovery link dispatched to ${email}. Please check your inbox.`);
@@ -92,7 +75,6 @@ export const AuthModal: React.FC = () => {
       authLogger.endSession('failed');
       setSuccessMessage(`If ${email} is registered, a password reset link has been dispatched.`);
     } finally {
-      refreshLogs();
       setLoading(false);
     }
   };
@@ -101,7 +83,6 @@ export const AuthModal: React.FC = () => {
     setLoading(true);
     setError(null);
     authLogger.startSession('Google Popup Sign-In');
-    refreshLogs();
 
     try {
       const fbUser = await signInWithGoogle();
@@ -135,17 +116,14 @@ export const AuthModal: React.FC = () => {
       }
 
       authLogger.endSession('success', `Authenticated as ${userEmail}`);
-      refreshLogs();
       setIsAuthOpen(false);
     } catch (err: any) {
       console.warn('Google Sign In Notice:', err);
       authLogger.logError(err, 'Google Credential Verification');
       authLogger.endSession('failed');
-      refreshLogs();
       
       const errMsg = err?.message || 'Failed to complete Google verification.';
       setError(errMsg);
-      setShowDiagnostics(true);
       showToast('Google Sign-In notice: popup may be blocked by browser.', 'info');
     } finally {
       setLoading(false);
@@ -166,7 +144,6 @@ export const AuthModal: React.FC = () => {
     setLoading(true);
     setError(null);
     authLogger.startSession(mode === 'signup' ? 'Email Registration' : 'Email Sign-In');
-    refreshLogs();
 
     try {
       let fbUser;
@@ -188,13 +165,11 @@ export const AuthModal: React.FC = () => {
 
       authLogger.logSessionHydration(userEmail, isWhitelisted ? 'superadmin' : 'customer', true);
       authLogger.endSession('success', `User ${userEmail} authenticated via email`);
-      refreshLogs();
       setIsAuthOpen(false);
     } catch (err: any) {
       console.error('Email Auth Error:', err);
       authLogger.logError(err, 'Email Authentication');
       authLogger.endSession('failed');
-      refreshLogs();
 
       let msg = err?.message || 'Authentication failed.';
       if (err?.code === 'auth/user-not-found' || err?.code === 'auth/wrong-password' || err?.code === 'auth/invalid-credential') {
@@ -213,20 +188,17 @@ export const AuthModal: React.FC = () => {
     setLoading(true);
     setError(null);
     authLogger.startSession('Anonymous Guest Sign-In');
-    refreshLogs();
 
     try {
       await signInAsGuest();
       authLogger.logSessionHydration('guest-anonymous', 'guest', false);
       authLogger.endSession('success', 'Guest signed in anonymously');
-      refreshLogs();
       showToast('Signed in as Guest Patron. Orders will be saved to your session!', 'info');
       setIsAuthOpen(false);
     } catch (err: any) {
       console.error('Guest Auth Error:', err);
       authLogger.logError(err, 'Anonymous Guest Login');
       authLogger.endSession('failed');
-      refreshLogs();
       setError(err?.message || 'Failed to initialize guest session.');
     } finally {
       setLoading(false);
@@ -236,19 +208,16 @@ export const AuthModal: React.FC = () => {
   const handleSignOut = async () => {
     setLoading(true);
     authLogger.startSession('Account Sign-Out');
-    refreshLogs();
 
     try {
       await logOut();
       authLogger.endSession('success', 'User signed out successfully');
-      refreshLogs();
       showToast('Signed out of BAAGFRESH account', 'info');
       setIsAuthOpen(false);
     } catch (err: any) {
       console.error('Sign Out Error:', err);
       authLogger.logError(err, 'Sign Out');
       authLogger.endSession('failed');
-      refreshLogs();
       showToast('Error signing out', 'error');
     } finally {
       setLoading(false);
@@ -605,83 +574,6 @@ export const AuthModal: React.FC = () => {
               )}
             </>
           )}
-
-          {/* Auth Lifecycle Diagnostics & Console Log Viewer */}
-          <div className="pt-2 border-t border-slate-100 dark:border-[#1e4433]">
-            <button
-              type="button"
-              onClick={() => {
-                setShowDiagnostics(!showDiagnostics);
-                refreshLogs();
-              }}
-              className="w-full py-1.5 px-2 rounded-lg bg-slate-100 dark:bg-[#133324] hover:bg-slate-200 dark:hover:bg-[#1b4330] text-[11px] font-semibold text-slate-600 dark:text-slate-300 flex items-center justify-between transition-colors"
-            >
-              <span className="flex items-center gap-1.5">
-                <Terminal className="w-3.5 h-3.5 text-emerald-600 dark:text-[#fed65b]" />
-                <span>Auth Lifecycle Console Telemetry ({diagnosticLogs.length} events)</span>
-              </span>
-              <span className="flex items-center gap-1 text-[10px] text-slate-400">
-                <span>{showDiagnostics ? 'Hide Logs' : 'View Logs'}</span>
-                {showDiagnostics ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </span>
-            </button>
-
-            {showDiagnostics && (
-              <div className="mt-2 p-2.5 rounded-xl bg-slate-950 text-slate-200 text-[11px] font-mono border border-slate-800 space-y-2 max-h-56 overflow-y-auto shadow-inner">
-                <div className="flex items-center justify-between pb-1 border-b border-slate-800 text-[10px] text-slate-400">
-                  <span className="font-bold text-emerald-400">GOOGLE & FIREBASE VERIFICATION LOGS</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={refreshLogs}
-                      className="hover:text-white flex items-center gap-0.5 text-[10px]"
-                      title="Refresh Logs"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Refresh</span>
-                    </button>
-                  </div>
-                </div>
-
-                {diagnosticLogs.length === 0 ? (
-                  <div className="py-3 text-center text-slate-500 text-[10px]">
-                    No auth lifecycle events recorded yet. Click 'Continue with Google' or an auth method above to begin logging.
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {diagnosticLogs.map((log, idx) => (
-                      <div 
-                        key={idx} 
-                        className={`p-1.5 rounded text-[10px] leading-tight border ${
-                          log.status === 'success' ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300' :
-                          log.status === 'error' ? 'bg-red-950/40 border-red-800/60 text-red-300' :
-                          log.status === 'warn' ? 'bg-amber-950/40 border-amber-800/60 text-amber-300' :
-                          'bg-slate-900 border-slate-800 text-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between font-bold">
-                          <span className="text-slate-400">{log.timestamp} • Step {log.step} [{log.phase}]</span>
-                          {log.durationMs !== undefined && (
-                            <span className="text-sky-400 bg-sky-950/80 px-1 rounded text-[9px]">{log.durationMs}ms</span>
-                          )}
-                        </div>
-                        <div className="mt-0.5 font-sans text-[11px]">{log.message}</div>
-                        {log.data && (
-                          <pre className="mt-1 p-1 bg-black/50 rounded text-[9px] overflow-x-auto text-slate-400 whitespace-pre-wrap">
-                            {JSON.stringify(log.data, null, 2)}
-                          </pre>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                <div className="pt-1 text-[9px] text-slate-500 flex items-center justify-between">
-                  <span>Open Browser DevTools (F12) for colored console groups.</span>
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* Security & Firestore Badge */}
           <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 pt-2">

@@ -14,7 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { loginCustomer, registerCustomer, clearCustomerSession } from '../lib/customerAuth';
+import { LocalAuthManager } from '../services/LocalAuthManager';
 import { signInWithGoogle, ADMIN_EMAILS } from '../lib/firebase';
 
 export const AuthModal: React.FC = () => {
@@ -58,7 +58,7 @@ export const AuthModal: React.FC = () => {
 
     try {
       if (mode === 'signup') {
-        const result = registerCustomer({
+        const result = LocalAuthManager.register({
           name: cleanName,
           emailOrPhone: cleanContact,
           password: cleanPass
@@ -73,7 +73,7 @@ export const AuthModal: React.FC = () => {
         showToast(`Welcome to BAAGFRESH, ${result.user.name}!`, 'success');
         setIsAuthOpen(false);
       } else {
-        const result = loginCustomer({
+        const result = LocalAuthManager.login({
           emailOrPhone: cleanContact,
           password: cleanPass
         });
@@ -96,7 +96,7 @@ export const AuthModal: React.FC = () => {
   };
 
   const handleSignOut = () => {
-    clearCustomerSession();
+    LocalAuthManager.clearSession();
     setUser(null);
     showToast('Signed out successfully', 'info');
     setIsAuthOpen(false);
@@ -118,7 +118,7 @@ export const AuthModal: React.FC = () => {
         showToast(`Welcome Administrator (${userEmail})!`, 'success');
       }
 
-      const registered = registerCustomer({
+      const registered = LocalAuthManager.register({
         name: fbUser.displayName || 'Royal Patron',
         emailOrPhone: userEmail || `user-${fbUser.uid.substring(0, 6)}@baagfresh.in`,
       });

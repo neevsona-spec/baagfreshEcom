@@ -43,13 +43,7 @@ import {
   updateWholesaleInquiryInFirestore,
   deleteWholesaleInquiryFromFirestore
 } from '../lib/firebase';
-import { 
-  getCurrentCustomerSession, 
-  saveCustomerSession, 
-  clearCustomerSession,
-  loginCustomer,
-  registerCustomer
-} from '../lib/customerAuth';
+import { LocalAuthManager } from '../services/LocalAuthManager';
 import { onAuthStateChanged } from 'firebase/auth';
 
 interface ToastItem {
@@ -935,7 +929,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(false);
   const [user, setUser] = useState<UserProfile | null>(() => {
-    const savedCustomer = getCurrentCustomerSession();
+    const savedCustomer = LocalAuthManager.getCurrentUser();
     return savedCustomer || INITIAL_USER;
   });
   const [orders, setOrders] = useState<Order[]>([
@@ -1087,7 +1081,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             unsubscribeOrders();
           }
           // Preserve local customer session if signed in directly
-          const localCustomer = getCurrentCustomerSession();
+          const localCustomer = LocalAuthManager.getCurrentUser();
           if (localCustomer) {
             setUser(localCustomer);
           } else {
@@ -1118,7 +1112,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.warn('Sign out notice:', e);
     }
-    clearCustomerSession();
+    LocalAuthManager.clearSession();
     setIsAdminUser(false);
     handleSetAdminAuth(false);
     setUser(INITIAL_USER);
@@ -1129,7 +1123,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!user) return;
     const updated = { ...user, addresses };
     setUser(updated);
-    saveCustomerSession(updated);
+    LocalAuthManager.setSession(updated);
     if (firebaseUser) {
       try {
         await updateUserInFirestore(firebaseUser.uid, { addresses });

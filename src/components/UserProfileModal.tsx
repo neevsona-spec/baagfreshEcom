@@ -23,7 +23,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { Address } from '../types';
 import { updateUserInFirestore } from '../lib/firebase';
-import { saveCustomerSession } from '../lib/customerAuth';
+import { LocalAuthManager } from '../services/LocalAuthManager';
 import { resolveProductImage } from '../utils/productImageResolver';
 
 export const UserProfileModal: React.FC = () => {
@@ -127,7 +127,7 @@ export const UserProfileModal: React.FC = () => {
   };
 
   const handleSaveProfileDetails = () => {
-    saveCustomerSession(user);
+    LocalAuthManager.setSession(user);
     if (firebaseUser) {
       updateUserInFirestore(firebaseUser.uid, {
         name: user.name,

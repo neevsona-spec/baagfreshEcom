@@ -175,8 +175,6 @@ export const AdminPanel: React.FC = () => {
     setSettingsForm(storeSettings);
   }, [storeSettings]);
 
-  if (!isAdminOpen) return null;
-
   const handleOpenInNewTab = () => {
     try {
       window.open(window.location.href, '_blank');
@@ -507,6 +505,8 @@ export const AdminPanel: React.FC = () => {
   const activeOrdersCount = orders.filter((o) => o.status !== 'delivered').length;
   const outOfStockCount = products.filter((p) => p.inStock === false).length;
   const pendingInquiriesCount = wholesaleInquiries.filter((i) => i.status === 'new' || i.status === 'contacted').length;
+
+  if (!isAdminOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn">

@@ -58,8 +58,6 @@ export const AuthModal: React.FC = () => {
     }
   }, [isAuthOpen]);
 
-  if (!isAuthOpen) return null;
-
   const refreshLogs = () => {
     setDiagnosticLogs(authLogger.getHistory());
   };
@@ -256,6 +254,8 @@ export const AuthModal: React.FC = () => {
       setLoading(false);
     }
   };
+
+  if (!isAuthOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-fadeIn">

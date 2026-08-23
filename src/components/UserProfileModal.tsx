@@ -58,8 +58,6 @@ export const UserProfileModal: React.FC = () => {
   const [newState, setNewState] = useState('Uttar Pradesh');
   const [newPincode, setNewPincode] = useState('221001');
 
-  if (!isProfileOpen || !user) return null;
-
   const handleSaveNewAddress = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStreet || !newCity || !newPincode) {
@@ -143,6 +141,8 @@ export const UserProfileModal: React.FC = () => {
       showToast('Profile settings saved locally. Sign in with Google to sync to cloud.', 'info');
     }
   };
+
+  if (!isProfileOpen || !user) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-fadeIn">

@@ -77,13 +77,13 @@ export const signInWithGoogle = async (): Promise<FirebaseUser> => {
   } catch (error: any) {
     authLogger.logError(error, 'Google Popup Authentication');
     if (error?.code === 'auth/popup-blocked') {
-      throw new Error('Google Sign-In popup was blocked by your browser or iframe security.');
+      throw new Error('Sign-in popup was blocked by your browser. Please allow popups or open in a dedicated window.');
     }
     if (error?.code === 'auth/popup-closed-by-user') {
-      throw new Error('Google Sign-In window was closed before completing verification.');
+      throw new Error('Sign-in window was closed before completing verification. Please try again.');
     }
     if (error?.code === 'auth/unauthorized-domain') {
-      throw new Error('This preview domain is pending authorization in Firebase OAuth. Use One-Click Superadmin Access.');
+      throw new Error('This domain is pending authorization. Please open in a dedicated window.');
     }
     throw error;
   }

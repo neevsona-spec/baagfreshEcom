@@ -653,8 +653,8 @@ export const Header: React.FC = () => {
                 <button
                   id="header-auth-btn"
                   onClick={() => setIsAuthOpen(true)}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-[#012d1d] hover:bg-[#1b4332] text-[#fed65b] rounded-full transition-colors border border-[#fed65b]/40 text-[11px] font-bold shadow-xs"
-                  title="Sign In with Google"
+                  className="flex items-center gap-1 px-2.5 py-1 bg-[#012d1d] hover:bg-[#1b4332] text-[#fed65b] rounded-full transition-colors border border-[#fed65b]/40 text-[11px] font-bold shadow-xs cursor-pointer"
+                  title="Sign In / Register"
                   aria-label="Sign In"
                 >
                   <User className="w-3.5 h-3.5 text-[#fed65b]" />

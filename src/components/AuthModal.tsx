@@ -118,9 +118,19 @@ export const AuthModal: React.FC = () => {
       authLogger.logError(err, 'Google Credential Verification');
       authLogger.endSession('failed');
       
-      const errMsg = err?.message || 'Failed to complete Google verification.';
+      let errMsg = 'Sign in could not be completed. Please try again.';
+      if (err?.code === 'auth/popup-closed-by-user' || err?.message?.toLowerCase().includes('closed')) {
+        errMsg = 'Sign-in window was closed before completing. Please try again when ready.';
+      } else if (err?.code === 'auth/popup-blocked' || err?.message?.toLowerCase().includes('blocked')) {
+        errMsg = 'Sign-in popup was blocked by your browser. Please allow popups or open in a dedicated window.';
+      } else if (err?.code === 'auth/network-request-failed') {
+        errMsg = 'Network connection issue. Please check your internet connection and try again.';
+      } else if (err?.message) {
+        errMsg = err.message;
+      }
+
       setError(errMsg);
-      showToast('Google Sign-In notice: please allow popups or open in dedicated tab.', 'info');
+      showToast(errMsg, 'info');
     } finally {
       setLoading(false);
     }

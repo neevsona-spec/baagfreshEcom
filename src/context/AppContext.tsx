@@ -1110,7 +1110,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (firebaseUser) {
       try {
         await updateUserInFirestore(firebaseUser.uid, { addresses });
-        showToast('Addresses synced with Cloud Firestore', 'success');
+        showToast('Addresses updated successfully', 'success');
       } catch (err) {
         console.error('Failed to sync addresses to Firestore:', err);
       }

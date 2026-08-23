@@ -138,7 +138,7 @@ export const UserProfileModal: React.FC = () => {
         showToast('Profile saved locally', 'info');
       });
     } else {
-      showToast('Profile settings saved locally. Sign in with Google to sync to cloud.', 'info');
+      showToast('Profile settings saved locally. Sign in to sync across devices.', 'info');
     }
   };
 
@@ -326,9 +326,9 @@ export const UserProfileModal: React.FC = () => {
 
               <button
                 onClick={handleSaveProfileDetails}
-                className="px-6 py-2.5 bg-[#012d1d] text-[#fed65b] font-bold rounded-xl shadow-md hover:bg-[#144230] transition-colors"
+                className="px-6 py-2.5 bg-[#012d1d] text-[#fed65b] font-bold rounded-xl shadow-md hover:bg-[#144230] transition-colors cursor-pointer"
               >
-                Save Changes to Cloud Firestore
+                Save Changes
               </button>
             </div>
           )}

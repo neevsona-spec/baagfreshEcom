@@ -631,22 +631,22 @@ export const Header: React.FC = () => {
               </button>
 
               {/* Account / Profile / Auth */}
-              {firebaseUser && !firebaseUser.isAnonymous ? (
+              {user && user.id !== 'usr-guest-00' && user.email ? (
                 <button
                   id="header-account-btn"
                   onClick={() => setIsProfileOpen(true)}
                   className="flex items-center gap-1.5 p-1 sm:px-2 sm:py-1 text-[#012d1d] dark:text-[#FAF3E0] hover:bg-[#ece2c9] dark:hover:bg-[#162f22] rounded-full transition-colors border border-[#d6caba]/60 dark:border-[#275943]"
-                  title={`Signed in as ${user?.name || firebaseUser.email}`}
+                  title={`Signed in as ${user.name}`}
                   aria-label="Account"
                 >
                   <img
-                    src={user?.avatar || firebaseUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150'}
+                    src={user.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150'}
                     alt="Profile"
                     className="w-5 h-5 rounded-full object-cover border border-[#fed65b]"
                     referrerPolicy="no-referrer"
                   />
                   <span className="hidden md:inline text-[11px] font-semibold max-w-[75px] truncate">
-                    {user?.name?.split(' ')[0] || 'Account'}
+                    {user.name.split(' ')[0] || 'Account'}
                   </span>
                 </button>
               ) : (

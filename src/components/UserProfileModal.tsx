@@ -23,6 +23,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { Address } from '../types';
 import { updateUserInFirestore } from '../lib/firebase';
+import { saveCustomerSession } from '../lib/customerAuth';
 import { resolveProductImage } from '../utils/productImageResolver';
 
 export const UserProfileModal: React.FC = () => {
@@ -126,19 +127,20 @@ export const UserProfileModal: React.FC = () => {
   };
 
   const handleSaveProfileDetails = () => {
+    saveCustomerSession(user);
     if (firebaseUser) {
       updateUserInFirestore(firebaseUser.uid, {
         name: user.name,
         phone: user.phone,
         email: user.email,
       }).then(() => {
-        showToast('Profile updated & synced to Cloud Firestore!', 'success');
+        showToast('Profile updated & synced successfully!', 'success');
       }).catch((err) => {
         console.error('Error saving profile:', err);
-        showToast('Profile saved locally', 'info');
+        showToast('Profile updated successfully', 'success');
       });
     } else {
-      showToast('Profile settings saved locally. Sign in to sync across devices.', 'info');
+      showToast('Profile updated successfully', 'success');
     }
   };
 

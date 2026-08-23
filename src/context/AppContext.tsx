@@ -43,6 +43,13 @@ import {
   updateWholesaleInquiryInFirestore,
   deleteWholesaleInquiryFromFirestore
 } from '../lib/firebase';
+import { 
+  getCurrentCustomerSession, 
+  saveCustomerSession, 
+  clearCustomerSession,
+  loginCustomer,
+  registerCustomer
+} from '../lib/customerAuth';
 import { onAuthStateChanged } from 'firebase/auth';
 
 interface ToastItem {
@@ -926,8 +933,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // User & Auth State
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [authLoading, setAuthLoading] = useState<boolean>(true);
-  const [user, setUser] = useState<UserProfile | null>(INITIAL_USER);
+  const [authLoading, setAuthLoading] = useState<boolean>(false);
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    const savedCustomer = getCurrentCustomerSession();
+    return savedCustomer || INITIAL_USER;
+  });
   const [orders, setOrders] = useState<Order[]>([
     {
       id: 'ord-bf-8942',
@@ -1076,8 +1086,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (unsubscribeOrders) {
             unsubscribeOrders();
           }
-          // Fallback to initial guest user
-          setUser(INITIAL_USER);
+          // Preserve local customer session if signed in directly
+          const localCustomer = getCurrentCustomerSession();
+          if (localCustomer) {
+            setUser(localCustomer);
+          } else {
+            setUser(INITIAL_USER);
+          }
         }
         setAuthLoading(false);
       },
@@ -1096,17 +1111,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const signOutUser = async () => {
-    await logOut();
+    try {
+      if (firebaseUser) {
+        await logOut();
+      }
+    } catch (e) {
+      console.warn('Sign out notice:', e);
+    }
+    clearCustomerSession();
     setIsAdminUser(false);
     handleSetAdminAuth(false);
     setUser(INITIAL_USER);
-    showToast('Signed out successfully', 'info');
+    showToast('Signed out of account', 'info');
   };
 
   const updateUserAddresses = async (addresses: Address[]) => {
     if (!user) return;
     const updated = { ...user, addresses };
     setUser(updated);
+    saveCustomerSession(updated);
     if (firebaseUser) {
       try {
         await updateUserInFirestore(firebaseUser.uid, { addresses });
@@ -1114,6 +1137,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (err) {
         console.error('Failed to sync addresses to Firestore:', err);
       }
+    } else {
+      showToast('Addresses updated successfully', 'success');
     }
   };
 

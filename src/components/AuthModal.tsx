@@ -2,15 +2,12 @@ import React, { useState } from 'react';
 import { 
   X, 
   ShieldCheck, 
-  Sparkles, 
   Mail, 
   Lock, 
   User as UserIcon, 
   ArrowRight, 
   CheckCircle2, 
   AlertCircle,
-  Database,
-  Cloud,
   LogOut,
   ExternalLink,
   Loader2
@@ -20,7 +17,6 @@ import {
   signInWithGoogle, 
   signInWithEmail, 
   signUpWithEmail, 
-  signInAsGuest,
   sendPasswordResetLink,
   logOut,
   ADMIN_EMAILS
@@ -38,7 +34,7 @@ export const AuthModal: React.FC = () => {
     setIsAdminAuthenticated 
   } = useApp();
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'guest'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -124,7 +120,7 @@ export const AuthModal: React.FC = () => {
       
       const errMsg = err?.message || 'Failed to complete Google verification.';
       setError(errMsg);
-      showToast('Google Sign-In notice: popup may be blocked by browser.', 'info');
+      showToast('Google Sign-In notice: please allow popups or open in dedicated tab.', 'info');
     } finally {
       setLoading(false);
     }
@@ -149,7 +145,7 @@ export const AuthModal: React.FC = () => {
       let fbUser;
       if (mode === 'signup') {
         fbUser = await signUpWithEmail(email, password, name || 'Royal Patron');
-        showToast('Account created successfully in Firebase!', 'success');
+        showToast('Account created successfully!', 'success');
       } else {
         fbUser = await signInWithEmail(email, password);
         showToast('Welcome back to BAAGFRESH!', 'success');
@@ -184,27 +180,6 @@ export const AuthModal: React.FC = () => {
     }
   };
 
-  const handleGuestSignIn = async () => {
-    setLoading(true);
-    setError(null);
-    authLogger.startSession('Anonymous Guest Sign-In');
-
-    try {
-      await signInAsGuest();
-      authLogger.logSessionHydration('guest-anonymous', 'guest', false);
-      authLogger.endSession('success', 'Guest signed in anonymously');
-      showToast('Signed in as Guest Patron. Orders will be saved to your session!', 'info');
-      setIsAuthOpen(false);
-    } catch (err: any) {
-      console.error('Guest Auth Error:', err);
-      authLogger.logError(err, 'Anonymous Guest Login');
-      authLogger.endSession('failed');
-      setError(err?.message || 'Failed to initialize guest session.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSignOut = async () => {
     setLoading(true);
     authLogger.startSession('Account Sign-Out');
@@ -233,36 +208,33 @@ export const AuthModal: React.FC = () => {
         <div className="p-6 bg-[#012d1d] text-[#FAF3E0] relative border-b border-[#1b4332]">
           <button
             onClick={() => setIsAuthOpen(false)}
-            className="absolute top-4 right-4 p-2 text-[#fed65b] hover:bg-white/10 rounded-full transition-colors"
+            className="absolute top-4 right-4 p-2 text-[#fed65b] hover:bg-white/10 rounded-full transition-colors cursor-pointer"
             title="Close"
           >
             <X className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-2 mb-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-[#fed65b]/20 text-[#fed65b] text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 border border-[#fed65b]/30">
-              <Cloud className="w-3 h-3" />
-              <span>Firebase Cloud Auth</span>
-            </span>
-          </div>
-
           <h3 className="font-cinzel text-xl sm:text-2xl font-bold text-white tracking-wide">
             {firebaseUser && !firebaseUser.isAnonymous 
-              ? 'Your Royal Account' 
+              ? 'Your Account' 
               : mode === 'signup' 
-                ? 'Join Royal Patronage' 
-                : 'Welcome to BAAGFRESH'}
+                ? 'Create Account' 
+                : mode === 'forgot'
+                  ? 'Reset Password'
+                  : 'Welcome to BAAGFRESH'}
           </h3>
           <p className="text-xs text-slate-300 mt-1 font-sans">
             {firebaseUser && !firebaseUser.isAnonymous
-              ? 'Manage your synchronized orders, addresses, and wishlist in Cloud Firestore.'
-              : 'Sign in to access your saved addresses, live tracking, and member-exclusive harvests.'}
+              ? 'Manage your orders, saved addresses, and wishlist.'
+              : mode === 'signup'
+                ? 'Register with Google or your email for exclusive harvests and fast checkout.'
+                : 'Sign in to access your orders, live tracking, and saved addresses.'}
           </p>
         </div>
 
         {/* Content Body */}
         <div className="p-6 space-y-5">
-          {/* If already signed in with Google or Email */}
+          {/* If already signed in */}
           {firebaseUser && !firebaseUser.isAnonymous ? (
             <div className="space-y-4">
               <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-[#153424] border border-emerald-200 dark:border-emerald-800 flex items-center gap-4">
@@ -284,30 +256,16 @@ export const AuthModal: React.FC = () => {
                   <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                     {firebaseUser.email}
                   </p>
-                  <div className="mt-1 flex items-center gap-2 text-[11px] text-emerald-700 dark:text-emerald-300">
-                    <Database className="w-3 h-3" />
-                    <span>Firestore Synced</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3 bg-slate-50 dark:bg-[#122b1e] rounded-xl text-xs text-slate-600 dark:text-slate-300 space-y-1.5 border border-slate-200 dark:border-[#275943]">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">UID:</span>
-                  <span className="font-mono text-[10px] text-slate-700 dark:text-slate-300">{firebaseUser.uid}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Auth Method:</span>
-                  <span className="font-medium capitalize text-slate-800 dark:text-slate-200">
-                    {firebaseUser.providerData[0]?.providerId === 'google.com' ? 'Google Account' : 'Password Auth'}
-                  </span>
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-300 mt-0.5 font-medium">
+                    Verified Account
+                  </p>
                 </div>
               </div>
 
               <button
                 onClick={handleSignOut}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 text-xs font-bold border border-red-200 dark:border-red-800 transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 text-xs font-bold border border-red-200 dark:border-red-800 transition-colors cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
                 <span>{loading ? 'Signing out...' : 'Sign Out of Account'}</span>
@@ -329,11 +287,8 @@ export const AuthModal: React.FC = () => {
                       className="text-[11px] font-bold text-[#012d1d] dark:text-[#fed65b] hover:underline flex items-center gap-1 cursor-pointer"
                     >
                       <ExternalLink className="w-3 h-3" />
-                      <span>Open in New Window</span>
+                      <span>Open in Dedicated Window</span>
                     </button>
-                    <span className="text-[10px] text-amber-700 dark:text-amber-300">
-                      Standard Patron Auth
-                    </span>
                   </div>
                 </div>
               )}
@@ -368,7 +323,7 @@ export const AuthModal: React.FC = () => {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 bg-[#012d1d] hover:bg-[#13402e] text-[#fed65b] text-xs font-bold rounded-xl shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition-all mt-2"
+                    className="w-full py-3 bg-[#012d1d] hover:bg-[#13402e] text-[#fed65b] text-xs font-bold rounded-xl shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition-all mt-2 cursor-pointer"
                   >
                     {loading ? (
                       <Loader2 className="w-4 h-4 animate-spin text-[#fed65b]" />
@@ -387,28 +342,29 @@ export const AuthModal: React.FC = () => {
                       setError(null);
                       setSuccessMessage(null);
                     }}
-                    className="w-full text-center py-2 text-xs font-semibold text-[#012d1d] dark:text-[#fed65b] hover:underline"
+                    className="w-full text-center py-2 text-xs font-semibold text-[#012d1d] dark:text-[#fed65b] hover:underline cursor-pointer"
                   >
                     Back to Sign In
                   </button>
                 </form>
               ) : (
                 <>
-                  {/* Primary Google Sign-in Button */}
+                  {/* Google Sign-in Button */}
                   <div className="space-y-2">
                     <button
+                      type="button"
                       onClick={handleGoogleSignIn}
                       disabled={loading}
-                      className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-white dark:bg-[#183a2a] hover:bg-slate-50 dark:hover:bg-[#1f4a36] text-slate-800 dark:text-white text-xs sm:text-sm font-bold border border-slate-300 dark:border-[#2f664e] shadow-sm hover:shadow transition-all group active:scale-[0.99] cursor-pointer"
+                      className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-2xl bg-white dark:bg-[#183a2a] hover:bg-slate-50 dark:hover:bg-[#1f4a36] text-slate-800 dark:text-white text-xs sm:text-sm font-bold border border-slate-300 dark:border-[#2f664e] shadow-sm hover:shadow transition-all group active:scale-[0.99] cursor-pointer"
                     >
                       {loading ? (
                         <>
                           <Loader2 className="w-5 h-5 animate-spin text-[#012d1d] dark:text-[#fed65b]" />
-                          <span>Verifying Credentials with Google...</span>
+                          <span>Connecting with Google...</span>
                         </>
                       ) : (
                         <>
-                          {/* Official Google SVG Icon */}
+                          {/* Google Icon */}
                           <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                             <path
                               fill="#4285F4"
@@ -431,21 +387,6 @@ export const AuthModal: React.FC = () => {
                         </>
                       )}
                     </button>
-
-                    <div className="flex items-center justify-between px-1 text-[11px] text-slate-500 dark:text-slate-400">
-                      <button
-                        type="button"
-                        onClick={handleOpenInNewTab}
-                        className="hover:underline flex items-center gap-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white cursor-pointer"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        <span>Open in Dedicated Tab</span>
-                      </button>
-                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                        <span>Secure OAuth 2.0</span>
-                      </span>
-                    </div>
                   </div>
 
                   <div className="relative flex items-center justify-center my-3">
@@ -455,7 +396,7 @@ export const AuthModal: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Email Form */}
+                  {/* Email & Password Form */}
                   <form onSubmit={handleEmailAuth} className="space-y-3">
                     {mode === 'signup' && (
                       <div>
@@ -468,7 +409,7 @@ export const AuthModal: React.FC = () => {
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            placeholder="e.g. Maharani Ananya"
+                            placeholder="Your Full Name"
                             className="w-full pl-9 pr-3 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-[#153123] border border-slate-200 dark:border-[#2c5f48] focus:border-[#012d1d] dark:focus:border-[#fed65b] focus:outline-none text-slate-800 dark:text-white"
                           />
                         </div>
@@ -486,7 +427,7 @@ export const AuthModal: React.FC = () => {
                           required
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
-                          placeholder="patron@baagfresh.in"
+                          placeholder="you@example.com"
                           className="w-full pl-9 pr-3 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-[#153123] border border-slate-200 dark:border-[#2c5f48] focus:border-[#012d1d] dark:focus:border-[#fed65b] focus:outline-none text-slate-800 dark:text-white"
                         />
                       </div>
@@ -505,7 +446,7 @@ export const AuthModal: React.FC = () => {
                               setError(null);
                               setSuccessMessage(null);
                             }}
-                            className="text-[10px] font-semibold text-[#012d1d] dark:text-[#fed65b] hover:underline"
+                            className="text-[10px] font-semibold text-[#012d1d] dark:text-[#fed65b] hover:underline cursor-pointer"
                           >
                             Forgot Password?
                           </button>
@@ -527,9 +468,9 @@ export const AuthModal: React.FC = () => {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full py-3 bg-[#012d1d] hover:bg-[#13402e] text-[#fed65b] text-xs font-bold rounded-xl shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition-all mt-2"
+                      className="w-full py-3 bg-[#012d1d] hover:bg-[#13402e] text-[#fed65b] text-xs font-bold rounded-xl shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition-all mt-2 cursor-pointer"
                     >
-                      <span>{loading ? 'Please wait...' : mode === 'signup' ? 'Create Account & Encrypt Vault' : 'Sign In'}</span>
+                      <span>{loading ? 'Please wait...' : mode === 'signup' ? 'Create Account' : 'Sign In'}</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </form>
@@ -541,7 +482,7 @@ export const AuthModal: React.FC = () => {
                         <span className="text-slate-500 dark:text-slate-400">Don't have an account?</span>
                         <button
                           onClick={() => setMode('signup')}
-                          className="font-bold text-[#012d1d] dark:text-[#fed65b] hover:underline"
+                          className="font-bold text-[#012d1d] dark:text-[#fed65b] hover:underline cursor-pointer"
                         >
                           Create Account
                         </button>
@@ -551,34 +492,22 @@ export const AuthModal: React.FC = () => {
                         <span className="text-slate-500 dark:text-slate-400">Already registered?</span>
                         <button
                           onClick={() => setMode('signin')}
-                          className="font-bold text-[#012d1d] dark:text-[#fed65b] hover:underline"
+                          className="font-bold text-[#012d1d] dark:text-[#fed65b] hover:underline cursor-pointer"
                         >
                           Sign In here
                         </button>
                       </>
                     )}
                   </div>
-
-                  {/* Guest / Demo Option */}
-                  <div className="pt-2 border-t border-slate-100 dark:border-[#1e4433]">
-                    <button
-                      type="button"
-                      onClick={handleGuestSignIn}
-                      disabled={loading}
-                      className="w-full py-2 text-center text-xs text-slate-500 dark:text-slate-400 hover:text-[#012d1d] dark:hover:text-[#fed65b] transition-colors font-medium"
-                    >
-                      Explore as Guest Patron (Anonymous Auth) →
-                    </button>
-                  </div>
                 </>
               )}
             </>
           )}
 
-          {/* Security & Firestore Badge */}
-          <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400 dark:text-slate-500 pt-2">
+          {/* Clean Security Badge */}
+          <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500 pt-2 border-t border-slate-100 dark:border-[#1a382a]">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Secured with Firebase Auth & Cloud Firestore Rules</span>
+            <span>256-Bit Encrypted & Secure Authentication</span>
           </div>
         </div>
       </div>

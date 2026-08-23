@@ -17,7 +17,7 @@ import {
   Globe,
   LogOut,
   LogIn,
-  Cloud,
+  CheckCircle2,
   Mail
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -163,8 +163,8 @@ export const UserProfileModal: React.FC = () => {
                 </h2>
                 {firebaseUser && !firebaseUser.isAnonymous && (
                   <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-[#fed65b] border border-[#fed65b]/40 flex items-center gap-1">
-                    <Cloud className="w-2.5 h-2.5" />
-                    <span>Firebase Synced</span>
+                    <CheckCircle2 className="w-2.5 h-2.5" />
+                    <span>Verified Patron</span>
                   </span>
                 )}
               </div>

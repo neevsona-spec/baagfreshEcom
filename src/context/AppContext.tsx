@@ -38,7 +38,8 @@ import {
   subscribeToWholesaleInquiries,
   saveWholesaleInquiryToFirestore,
   updateWholesaleInquiryInFirestore,
-  deleteWholesaleInquiryFromFirestore
+  deleteWholesaleInquiryFromFirestore,
+  ADMIN_EMAILS
 } from '../lib/firebase';
 import { LocalAuthManager } from '../services/LocalAuthManager';
 
@@ -835,19 +836,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Cart
   const [cart, setCart] = useState<CartItem[]>(() => {
-    const mamra = PRODUCTS[0];
-    const initialOpt = mamra.packOptions[0];
-    return [
-      {
-        id: `${mamra.id}-${initialOpt.weight}`,
-        product: mamra,
-        selectedWeight: initialOpt.weight,
-        price: initialOpt.price,
-        originalPrice: initialOpt.originalPrice,
-        quantity: 1,
-      }
-    ];
+    const saved = localStorage.getItem('baagfresh_cart');
+    return saved ? JSON.parse(saved) : [];
   });
+
+  // Persist Cart to LocalStorage
+  useEffect(() => {
+    localStorage.setItem('baagfresh_cart', JSON.stringify(cart));
+  }, [cart]);
   const [appliedPromo, setAppliedPromo] = useState<string>('');
   const [promoDiscountRate, setPromoDiscountRate] = useState<number>(0);
   const [promoFlatDiscount, setPromoFlatDiscount] = useState<number>(0);
@@ -927,6 +923,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const savedCustomer = LocalAuthManager.getCurrentUser();
     return savedCustomer || INITIAL_USER;
   });
+
+  // Admin User Check
+  useEffect(() => {
+    if (user && user.email) {
+      const isMasterAdmin = ADMIN_EMAILS.includes(user.email.toLowerCase().trim());
+      setIsAdminUser(isMasterAdmin);
+    } else {
+      setIsAdminUser(false);
+    }
+  }, [user]);
   const [orders, setOrders] = useState<Order[]>([
     {
       id: 'ord-bf-8942',
@@ -1238,8 +1244,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updated = [...prev, product];
       }
 
-      if (firebaseUser) {
-        saveWishlistToFirestore(firebaseUser.uid, updated.map((p) => p.id)).catch((err) => {
+      if (true) {
+        saveWishlistToFirestore(user.id, updated.map((p) => p.id)).catch((err) => {
           console.error('Failed to sync wishlist to Firestore:', err);
         });
       }

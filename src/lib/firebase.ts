@@ -12,6 +12,8 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
+  setPersistence,
+  browserLocalPersistence,
   User as FirebaseUser
 } from 'firebase/auth';
 import { 
@@ -49,6 +51,13 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
 // Initialize Auth
 export const auth = getAuth(app);
 
+// Guarantee browser local persistence across sessions & page reloads
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserLocalPersistence).catch((err) => {
+    console.warn('Firebase persistence initialization note:', err?.message || err);
+  });
+}
+
 // Initialize Firestore (handling default and named database ID configurations)
 const dbId = (firebaseConfig as { firestoreDatabaseId?: string; databaseId?: string }).firestoreDatabaseId ||
   (firebaseConfig as { firestoreDatabaseId?: string; databaseId?: string }).databaseId;
@@ -64,7 +73,7 @@ googleProvider.setCustomParameters({
 });
 
 /**
- * Sign in with Google Popup
+ * Sign in with Google Popup with resilient error handling
  */
 export const signInWithGoogle = async (): Promise<FirebaseUser> => {
   authLogger.logProviderConfig('GoogleAuthProvider', { prompt: 'select_account' }, []);
@@ -80,10 +89,16 @@ export const signInWithGoogle = async (): Promise<FirebaseUser> => {
       throw new Error('Sign-in popup was blocked by your browser. Please allow popups or open in a dedicated window.');
     }
     if (error?.code === 'auth/popup-closed-by-user') {
-      throw new Error('Sign-in window was closed before completing verification. Please try again.');
+      throw new Error('Authentication window closed. Please try again.');
+    }
+    if (error?.code === 'auth/cancelled-popup-request') {
+      throw new Error('Sign-in attempt was superseded. Please try again.');
     }
     if (error?.code === 'auth/unauthorized-domain') {
       throw new Error('This domain is pending authorization. Please open in a dedicated window.');
+    }
+    if (error?.code === 'auth/network-request-failed') {
+      throw new Error('Network connection issue. Please check your internet connection and try again.');
     }
     throw error;
   }

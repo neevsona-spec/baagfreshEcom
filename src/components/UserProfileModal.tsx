@@ -84,7 +84,7 @@ export const UserProfileModal: React.FC = () => {
     setIsAddingAddress(false);
     setNewStreet('');
     setNewApartment('');
-    showToast('New delivery address saved to Cloud Firestore!', 'success');
+    showToast('New delivery address saved successfully!', 'success');
   };
 
   const handleDeleteAddress = (id: string) => {

@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { LocalAuthManager } from '../services/LocalAuthManager';
-import { signInWithGoogle, ADMIN_EMAILS } from '../lib/firebase';
 
 export const AuthModal: React.FC = () => {
   const { 
@@ -24,7 +23,6 @@ export const AuthModal: React.FC = () => {
     user, 
     setUser,
     showToast,
-    setIsAdminAuthenticated 
   } = useApp();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -100,44 +98,6 @@ export const AuthModal: React.FC = () => {
     setUser(null);
     showToast('Signed out successfully', 'info');
     setIsAuthOpen(false);
-  };
-
-  // Optional quick Google sign-in fallback
-  const handleQuickGoogleSignIn = async () => {
-    if (loading) return;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const fbUser = await signInWithGoogle();
-      const userEmail = (fbUser?.email || '').toLowerCase().trim();
-      const isWhitelisted = Boolean(userEmail && ADMIN_EMAILS.includes(userEmail));
-
-      if (isWhitelisted) {
-        setIsAdminAuthenticated(true);
-        showToast(`Welcome Administrator (${userEmail})!`, 'success');
-      }
-
-      const registered = LocalAuthManager.register({
-        name: fbUser.displayName || 'Royal Patron',
-        emailOrPhone: userEmail || `user-${fbUser.uid.substring(0, 6)}@baagfresh.in`,
-      });
-
-      if (registered.user) {
-        setUser({
-          ...registered.user,
-          avatar: fbUser.photoURL || registered.user.avatar
-        });
-      }
-
-      showToast('Signed in successfully with Google!', 'success');
-      setIsAuthOpen(false);
-    } catch (err: any) {
-      console.warn('Google Sign-In note:', err);
-      setError('Google Sign-In encountered an issue. You can sign in instantly using your Name/Email or Mobile below.');
-    } finally {
-      setLoading(false);
-    }
   };
 
   if (!isAuthOpen) return null;
@@ -346,42 +306,6 @@ export const AuthModal: React.FC = () => {
                 </button>
               </form>
 
-              {/* Alternative One-Click Google sign-in option */}
-              <div className="pt-2">
-                <div className="relative flex items-center justify-center my-2">
-                  <div className="border-t border-slate-200 dark:border-[#275943] w-full" />
-                  <span className="bg-white dark:bg-[#0f241a] px-3 text-[10px] font-medium text-slate-400 uppercase tracking-wider absolute">
-                    Or
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleQuickGoogleSignIn}
-                  disabled={loading}
-                  className="w-full flex items-center justify-center gap-3 py-2.5 px-4 min-h-[40px] rounded-xl bg-white dark:bg-[#183a2a] hover:bg-slate-50 dark:hover:bg-[#1f4a36] text-slate-800 dark:text-white text-xs font-semibold border border-slate-300 dark:border-[#2f664e] shadow-xs hover:shadow transition-all active:scale-[0.99] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                    <path
-                      fill="#4285F4"
-                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                    />
-                  </svg>
-                  <span>Continue with Google</span>
-                </button>
-              </div>
 
               {/* Mode switch */}
               <div className="flex items-center justify-between text-xs pt-1">

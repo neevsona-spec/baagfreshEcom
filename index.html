@@ -11,62 +11,67 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌿</text></svg>" />
     <script>
       (function() {
-        var isSuppressed = function(err) {
-          if (!err) return false;
-          var msg = '';
-          try {
-            if (typeof err === 'string') {
-              msg = err;
-            } else if (err instanceof Error) {
-              msg = err.message + ' ' + (err.stack || '');
-            } else if (typeof err === 'object') {
-              msg = JSON.stringify(err);
-            } else {
-              msg = String(err);
+        var BANNED_PATTERNS = [
+          'metamask',
+          'ethereum',
+          'web3',
+          'wallet',
+          'phantom',
+          'solana',
+          'coinbase',
+          'extension context',
+          'chrome-extension',
+          'resizeobserver',
+          'websocket',
+          'closed without opened',
+          'failed to connect to metamask',
+          'failed to connect to',
+          'error restoring session',
+          'restoring session',
+          'user rejected'
+        ];
+
+        function isIgnorableArgs(args) {
+          if (!args || !args.length) return false;
+          var combined = '';
+          for (var i = 0; i < args.length; i++) {
+            var item = args[i];
+            try {
+              if (typeof item === 'string') {
+                combined += ' ' + item;
+              } else if (item instanceof Error) {
+                combined += ' ' + item.message + ' ' + (item.stack || '');
+              } else if (typeof item === 'object') {
+                combined += ' ' + JSON.stringify(item);
+              } else {
+                combined += ' ' + String(item);
+              }
+            } catch(e) {
+              combined += ' ' + String(item);
             }
-          } catch(e) {
-            msg = String(err);
           }
-          if (typeof msg !== 'string') return false;
-          var lower = msg.toLowerCase();
-          return (
-            lower.indexOf('metamask') !== -1 ||
-            lower.indexOf('ethereum') !== -1 ||
-            lower.indexOf('web3') !== -1 ||
-            lower.indexOf('wallet') !== -1 ||
-            lower.indexOf('phantom') !== -1 ||
-            lower.indexOf('solana') !== -1 ||
-            lower.indexOf('coinbase') !== -1 ||
-            lower.indexOf('extension context') !== -1 ||
-            lower.indexOf('chrome-extension') !== -1 ||
-            lower.indexOf('resizeobserver') !== -1 ||
-            lower.indexOf('websocket') !== -1 ||
-            lower.indexOf('closed without opened') !== -1 ||
-            lower.indexOf('failed to connect to') !== -1 ||
-            lower.indexOf('error restoring session') !== -1 ||
-            lower.indexOf('user rejected') !== -1
-          );
-        };
+          var lower = combined.toLowerCase();
+          for (var j = 0; j < BANNED_PATTERNS.length; j++) {
+            if (lower.indexOf(BANNED_PATTERNS[j]) !== -1) {
+              return true;
+            }
+          }
+          return false;
+        }
 
-        // Intercept console.warn and console.error for third-party extensions
-        var origWarn = console.warn;
-        console.warn = function() {
-          for (var i = 0; i < arguments.length; i++) {
-            if (isSuppressed(arguments[i])) return;
+        // Intercept console functions to suppress third-party extension injection noise
+        ['warn', 'error', 'info', 'log', 'debug'].forEach(function(fn) {
+          var original = console[fn];
+          if (typeof original === 'function') {
+            console[fn] = function() {
+              if (isIgnorableArgs(arguments)) return;
+              return original.apply(console, arguments);
+            };
           }
-          return origWarn.apply(console, arguments);
-        };
-
-        var origError = console.error;
-        console.error = function() {
-          for (var i = 0; i < arguments.length; i++) {
-            if (isSuppressed(arguments[i])) return;
-          }
-          return origError.apply(console, arguments);
-        };
+        });
 
         window.addEventListener('unhandledrejection', function(event) {
-          if (isSuppressed(event.reason) || (event.reason && isSuppressed(event.reason.message))) {
+          if (isIgnorableArgs([event.reason, event.reason && event.reason.message])) {
             event.preventDefault();
             event.stopImmediatePropagation();
             return false;
@@ -74,7 +79,7 @@
         }, true);
 
         window.addEventListener('error', function(event) {
-          if (isSuppressed(event.message) || isSuppressed(event.error)) {
+          if (isIgnorableArgs([event.message, event.error])) {
             event.preventDefault();
             event.stopImmediatePropagation();
             return false;

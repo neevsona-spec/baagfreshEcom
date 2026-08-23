@@ -670,7 +670,7 @@ export const GmailHubModal: React.FC<GmailHubModalProps> = ({
         <div className="p-4 bg-slate-50 dark:bg-[#0f241a] border-t border-slate-200 dark:border-[#275943]/60 flex items-center justify-between text-xs text-slate-500">
           <div className="flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>Secure OAuth 2.0 Client-Side Token Authentication</span>
+            <span>Encrypted Direct Client Integration</span>
           </div>
           <button
             onClick={onClose}

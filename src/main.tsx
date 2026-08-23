@@ -6,64 +6,71 @@ import './index.css';
 // Guard against third-party browser extension injection errors (e.g. MetaMask, Phantom, Web3 wallets)
 // and benign sandboxed Vite WebSocket disconnection notices in preview iframes.
 if (typeof window !== 'undefined') {
-  const isIgnorableNoise = (err: any): boolean => {
-    if (!err) return false;
-    let msg = '';
-    try {
-      if (typeof err === 'string') {
-        msg = err;
-      } else if (err instanceof Error) {
-        msg = err.message + ' ' + (err.stack || '');
-      } else if (typeof err === 'object') {
-        msg = JSON.stringify(err);
-      } else {
-        msg = String(err);
+  const BANNED_PATTERNS = [
+    'metamask',
+    'ethereum',
+    'web3',
+    'wallet',
+    'solana',
+    'phantom',
+    'coinbase',
+    'extension context',
+    'chrome-extension',
+    'resizeobserver',
+    'websocket',
+    'closed without opened',
+    'failed to connect to metamask',
+    'failed to connect to',
+    'error restoring session',
+    'restoring session',
+    'user rejected'
+  ];
+
+  const isIgnorableNoise = (...args: any[]): boolean => {
+    if (!args || !args.length) return false;
+    let combined = '';
+    for (let i = 0; i < args.length; i++) {
+      const err = args[i];
+      try {
+        if (typeof err === 'string') {
+          combined += ' ' + err;
+        } else if (err instanceof Error) {
+          combined += ' ' + err.message + ' ' + (err.stack || '');
+        } else if (typeof err === 'object') {
+          combined += ' ' + JSON.stringify(err);
+        } else {
+          combined += ' ' + String(err);
+        }
+      } catch {
+        combined += ' ' + String(err);
       }
-    } catch {
-      msg = String(err);
     }
-    if (typeof msg !== 'string') return false;
-    const lower = msg.toLowerCase();
-    return (
-      lower.includes('metamask') ||
-      lower.includes('ethereum') ||
-      lower.includes('web3') ||
-      lower.includes('wallet') ||
-      lower.includes('solana') ||
-      lower.includes('phantom') ||
-      lower.includes('coinbase') ||
-      lower.includes('extension context') ||
-      lower.includes('chrome-extension') ||
-      lower.includes('resizeobserver') ||
-      lower.includes('websocket') ||
-      lower.includes('closed without opened') ||
-      lower.includes('failed to connect to websocket') ||
-      lower.includes('failed to connect to metamask') ||
-      lower.includes('error restoring session') ||
-      lower.includes('user rejected')
-    );
+    const lower = combined.toLowerCase();
+    return BANNED_PATTERNS.some((pattern) => lower.includes(pattern));
   };
 
   const origWarn = console.warn;
   console.warn = function (...args: any[]) {
-    for (const arg of args) {
-      if (isIgnorableNoise(arg)) return;
-    }
+    if (isIgnorableNoise(...args)) return;
     return origWarn.apply(console, args);
   };
 
   const origError = console.error;
   console.error = function (...args: any[]) {
-    for (const arg of args) {
-      if (isIgnorableNoise(arg)) return;
-    }
+    if (isIgnorableNoise(...args)) return;
     return origError.apply(console, args);
+  };
+
+  const origInfo = console.info;
+  console.info = function (...args: any[]) {
+    if (isIgnorableNoise(...args)) return;
+    return origInfo.apply(console, args);
   };
 
   window.addEventListener(
     'unhandledrejection',
     (event) => {
-      if (isIgnorableNoise(event?.reason) || isIgnorableNoise(event?.reason?.message)) {
+      if (isIgnorableNoise(event?.reason, event?.reason?.message)) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }
@@ -74,7 +81,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener(
     'error',
     (event) => {
-      if (isIgnorableNoise(event?.message) || isIgnorableNoise(event?.error)) {
+      if (isIgnorableNoise(event?.message, event?.error)) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }

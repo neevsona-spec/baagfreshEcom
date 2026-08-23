@@ -95,7 +95,7 @@ export const signInWithGoogle = async (): Promise<FirebaseUser> => {
       throw new Error('Sign-in attempt was superseded. Please try again.');
     }
     if (error?.code === 'auth/unauthorized-domain') {
-      throw new Error('This domain is pending authorization. Please open in a dedicated window.');
+      throw new Error('Please sign in using your Name and Email/Mobile number below.');
     }
     if (error?.code === 'auth/network-request-failed') {
       throw new Error('Network connection issue. Please check your internet connection and try again.');

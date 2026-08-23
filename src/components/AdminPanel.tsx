@@ -50,11 +50,7 @@ import { Product, PromoCodeItem, StoreSettings, WholesaleInquiry, Order, Categor
 import { CATEGORIES } from '../data/products';
 import { resolveProductImage } from '../utils/productImageResolver';
 import { 
-  signInWithEmail, 
-  signUpWithEmail, 
   signInWithGoogle, 
-  signInAsSuperAdminDirect,
-  sendPasswordResetLink, 
   checkIsAdmin, 
   ensureAdminRecordInFirestore, 
   ADMIN_EMAILS 
@@ -99,11 +95,7 @@ export const AdminPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'promos' | 'inquiries' | 'settings'>('overview');
   const [isBulkManagerOpen, setIsBulkManagerOpen] = useState(false);
   
-  // Admin Login & Forgot Password state - strictly blank by default
-  const [authMode, setAuthMode] = useState<'login' | 'forgot'>('login');
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  // Admin Google Authentication state
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
@@ -172,48 +164,21 @@ export const AdminPanel: React.FC = () => {
 
   if (!isAdminOpen) return null;
 
-  const handleInstantSuperAdminLogin = async (emailToUse: string = 'neevsona@gmail.com') => {
-    setAuthError('');
-    setAuthSuccess('');
-    setAuthLoading(true);
-
-    try {
-      const cleanEmail = emailToUse.toLowerCase().trim();
-      const adminInfo = await signInAsSuperAdminDirect(cleanEmail);
-      setIsAdminAuthenticated(true);
-      setFailedAttempts(0);
-      setAdminPassword('');
-      setUser((prev) => ({
-        ...prev,
-        id: adminInfo.uid,
-        name: adminInfo.name,
-        email: adminInfo.email,
-        memberSince: 'Founding Administrator'
-      }));
-      showToast(`Master Administrator Authenticated: ${adminInfo.email}`, 'success');
-    } catch (err: any) {
-      console.warn('Instant admin sign-in notice:', err);
-      setIsAdminAuthenticated(true);
-      setFailedAttempts(0);
-      setUser((prev) => ({
-        ...prev,
-        id: `admin-${emailToUse.replace(/[^a-z0-9]/g, '-')}`,
-        name: emailToUse === 'neevsona@gmail.com' ? 'Neev Sona (Super Administrator)' : 'Master Administrator',
-        email: emailToUse,
-        memberSince: 'Founding Administrator'
-      }));
-      showToast(`Admin console unlocked for ${emailToUse}`, 'success');
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const handleOpenInNewTab = () => {
     try {
       window.open(window.location.href, '_blank');
-      showToast('Opened store in dedicated tab. You can now use Google Popup authentication.', 'info');
-    } catch (e) {
+      showToast('Opened store in dedicated tab for direct Google authentication.', 'info');
+    } catch {
       window.location.reload();
+    }
+  };
+
+  const recordFailedAttempt = () => {
+    const nextAttempts = failedAttempts + 1;
+    setFailedAttempts(nextAttempts);
+    if (nextAttempts >= 5) {
+      setLockoutRemaining(60);
+      setAuthError('Maximum authentication attempts exceeded. Security cooldown active for 60 seconds.');
     }
   };
 
@@ -225,7 +190,7 @@ export const AdminPanel: React.FC = () => {
     authLogger.startSession('Admin Console Google Sign-In');
 
     try {
-      // 1. Authenticate with Google Popup using standard profile/email scopes
+      // 1. Authenticate with Google Popup
       const userRes = await signInWithGoogle();
       const userEmail = (userRes.email || '').toLowerCase().trim();
 
@@ -233,7 +198,7 @@ export const AdminPanel: React.FC = () => {
         throw new Error('Could not retrieve verified email address from Google Account.');
       }
 
-      // 2. Strict Privilege Check: Is this user's email an authorized administrator?
+      // 2. Strict Privilege Verification: Is this Google account an authorized administrator?
       const isAuthorizedEmail = ADMIN_EMAILS.includes(userEmail);
       const isExistingAdminDoc = await checkIsAdmin(userRes.uid, userEmail);
 
@@ -241,14 +206,14 @@ export const AdminPanel: React.FC = () => {
 
       if (!isAuthorizedEmail && !isExistingAdminDoc) {
         authLogger.logError(
-          new Error(`Google Account "${userEmail}" is not recognized as an administrator.`),
+          new Error(`Google Account "${userEmail}" is not recognized as an authorized administrator.`),
           'Admin Authorization Check'
         );
         authLogger.endSession('failed');
 
-        // Strict denial: Unauthorized Google accounts are prohibited from admin console
+        // Strict denial for unauthorized Google accounts
         setAuthError(
-          `Access Denied: Google Account "${userEmail}" is not recognized as an administrator. Authorized emails include: ${ADMIN_EMAILS.join(', ')}`
+          `Access Denied: Google Account "${userEmail}" is not recognized as an administrator. Please sign in with an authorized account (e.g. ${ADMIN_EMAILS[0]}).`
         );
         recordFailedAttempt();
         return;
@@ -275,33 +240,14 @@ export const AdminPanel: React.FC = () => {
 
       authLogger.logSessionHydration(userEmail, 'superadmin', true);
       authLogger.endSession('success', `Admin authenticated: ${userEmail}`);
-      showToast(`Admin Google Sign-In Successful: ${userEmail}`, 'success');
+      showToast(`Master Administrator Authenticated: ${userEmail}`, 'success');
     } catch (err: any) {
-      console.warn('Google Admin Auth notice (falling back to direct superadmin authorization):', err);
+      console.warn('Google Admin Auth notice:', err);
       authLogger.logError(err, 'Google Admin Authentication');
       
-      // Fallback: If popup is blocked by browser or preview sandbox, immediately auto-unlock superadmin access
-      try {
-        const adminInfo = await signInAsSuperAdminDirect('neevsona@gmail.com');
-        setUser((prev) => ({
-          ...prev,
-          id: adminInfo.uid,
-          name: adminInfo.name,
-          email: adminInfo.email,
-          memberSince: 'Founding Administrator'
-        }));
-        authLogger.logPrivilegeCheck(adminInfo.email, true, true);
-        authLogger.logSessionHydration(adminInfo.email, 'superadmin', true);
-        authLogger.endSession('fallback_used', 'Superadmin fallback activated');
-      } catch (directErr) {
-        console.warn('Direct admin setup notice:', directErr);
-        authLogger.logError(directErr, 'Direct Superadmin Fallback');
-        authLogger.endSession('failed');
-      }
-      
-      setIsAdminAuthenticated(true);
-      setFailedAttempts(0);
-      showToast('Admin Console Unlocked: neevsona@gmail.com', 'success');
+      const errorMsg = err?.message || 'Google Sign-In failed or popup was closed. Click "Open in Dedicated Tab" above if popup is blocked by your browser.';
+      setAuthError(errorMsg);
+      recordFailedAttempt();
     } finally {
       setAuthLoading(false);
     }
@@ -311,8 +257,6 @@ export const AdminPanel: React.FC = () => {
     try {
       setAuthLoading(true);
       setIsAdminAuthenticated(false);
-      setAdminEmail('');
-      setAdminPassword('');
       setAuthError('');
       setAuthSuccess('');
       // Sign out of Firebase authentication session
@@ -321,159 +265,13 @@ export const AdminPanel: React.FC = () => {
       setIsAdminOpen(false);
       // Return user to public store / homepage
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      showToast('Admin session cleared. Returned to public homepage.', 'info');
+      showToast('Admin session closed. Returned to public store.', 'info');
     } catch (err) {
       console.warn('Admin logout error:', err);
       setIsAdminAuthenticated(false);
       setIsAdminOpen(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       showToast('Admin console closed.', 'info');
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleAdminLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (lockoutRemaining > 0) return;
-
-    setAuthError('');
-    setAuthSuccess('');
-
-    const cleanEmail = adminEmail.trim().toLowerCase();
-    const cleanPassword = adminPassword.trim();
-
-    if (!cleanEmail) {
-      setAuthError('Please enter your administrator email address.');
-      return;
-    }
-
-    if (!cleanPassword) {
-      setAuthError('Please enter your administrator password.');
-      return;
-    }
-
-    if (cleanPassword.length < 4) {
-      setAuthError('Password must be at least 4 characters in length.');
-      return;
-    }
-
-    setAuthLoading(true);
-
-    try {
-      let user: any = null;
-
-      try {
-        // 1. Attempt Firebase Sign-in
-        user = await signInWithEmail(cleanEmail, cleanPassword);
-      } catch (signInErr: any) {
-        // If authorized admin email, handle auto-provision or password fallback
-        if (ADMIN_EMAILS.includes(cleanEmail)) {
-          try {
-            user = await signUpWithEmail(cleanEmail, cleanPassword, 'Neev Sona (Super Administrator)');
-          } catch (signUpErr: any) {
-            console.warn('Admin signup fallback for authorized email:', signUpErr);
-            // Grant direct access for verified owner email
-            await ensureAdminRecordInFirestore(`admin-${cleanEmail.replace(/[^a-z0-9]/g, '-')}`, cleanEmail, 'superadmin', 'Master Administrator');
-            setIsAdminAuthenticated(true);
-            setFailedAttempts(0);
-            setAdminPassword('');
-            showToast(`Administrator authenticated: ${cleanEmail}`, 'success');
-            return;
-          }
-        } else {
-          throw signInErr;
-        }
-      }
-
-      if (!user) {
-        throw new Error('Authentication process failed. Please retry.');
-      }
-      
-      // 2. Grant and verify Administrator Privilege in Firestore /admins collection
-      await ensureAdminRecordInFirestore(user.uid, cleanEmail, 'superadmin', 'Master Administrator');
-      const isAllowed = await checkIsAdmin(user.uid, user.email || cleanEmail);
-
-      if (isAllowed) {
-        setIsAdminAuthenticated(true);
-        setFailedAttempts(0);
-        setAdminPassword('');
-        showToast(`Administrator authenticated: ${cleanEmail}`, 'success');
-      } else {
-        setAuthError('Access denied. This account does not possess administrator privileges.');
-        recordFailedAttempt();
-      }
-    } catch (err: any) {
-      console.warn('Firebase admin authentication error:', err);
-
-      if (ADMIN_EMAILS.includes(cleanEmail)) {
-        // Fallback for authorized master admin
-        await ensureAdminRecordInFirestore(`admin-${cleanEmail.replace(/[^a-z0-9]/g, '-')}`, cleanEmail, 'superadmin', 'Master Administrator');
-        setIsAdminAuthenticated(true);
-        setFailedAttempts(0);
-        setAdminPassword('');
-        showToast(`Administrator authenticated: ${cleanEmail}`, 'success');
-        return;
-      }
-
-      // Handle common Firebase Auth error codes
-      if (err?.code === 'auth/wrong-password' || err?.code === 'auth/invalid-credential') {
-        setAuthError('Invalid administrator email or password combination.');
-        recordFailedAttempt();
-      } else if (err?.code === 'auth/user-not-found') {
-        setAuthError('No administrative account associated with this email address.');
-        recordFailedAttempt();
-      } else if (err?.code === 'auth/too-many-requests') {
-        setAuthError('Too many failed attempts. Account temporarily locked for security.');
-        setLockoutRemaining(60);
-      } else {
-        setAuthError(err?.message || 'Authentication failed. Please verify administrative credentials.');
-        recordFailedAttempt();
-      }
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const recordFailedAttempt = () => {
-    const nextAttempts = failedAttempts + 1;
-    setFailedAttempts(nextAttempts);
-    if (nextAttempts >= 5) {
-      setLockoutRemaining(60);
-      setAuthError('Maximum authentication attempts exceeded. Locked for 60 seconds.');
-    }
-  };
-
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError('');
-    setAuthSuccess('');
-
-    const cleanEmail = adminEmail.trim().toLowerCase();
-    if (!cleanEmail) {
-      setAuthError('Please enter your registered administrator email address.');
-      return;
-    }
-
-    // Basic email format validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(cleanEmail)) {
-      setAuthError('Please enter a valid email format.');
-      return;
-    }
-
-    setAuthLoading(true);
-    try {
-      await sendPasswordResetLink(cleanEmail);
-      setAuthSuccess(`A password reset link has been dispatched to ${cleanEmail}. Please check your inbox and spam folder.`);
-    } catch (err: any) {
-      console.error('Password reset error:', err);
-      if (err?.code === 'auth/user-not-found') {
-        setAuthError('No administrative account found with this email address.');
-      } else {
-        // Give clear feedback
-        setAuthSuccess(`If ${cleanEmail} is registered in the administrative directory, a password reset email has been sent.`);
-      }
     } finally {
       setAuthLoading(false);
     }
@@ -700,15 +498,13 @@ export const AdminPanel: React.FC = () => {
               {/* Header Badge */}
               <div className="text-center space-y-2">
                 <div className="w-16 h-16 rounded-2xl bg-[#012d1d] text-[#fed65b] flex items-center justify-center mx-auto border border-[#fed65b]/40 shadow-inner">
-                  {authMode === 'login' ? <Lock className="w-8 h-8" /> : <KeyRound className="w-8 h-8" />}
+                  <ShieldCheck className="w-8 h-8" />
                 </div>
                 <h3 className="font-cinzel text-xl font-bold text-[#012d1d] dark:text-[#fed65b]">
-                  {authMode === 'login' ? 'Admin Control Center' : 'Reset Administrator Password'}
+                  Admin Control Center
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {authMode === 'login' 
-                    ? 'Secure administrative portal for store management, orders, catalog & analytics.'
-                    : 'Enter your registered administrative email address to receive a secure recovery link.'}
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Restricted administrative portal. Sign in with your authorized Google Administrator account to manage the store.
                 </p>
               </div>
 
@@ -734,244 +530,61 @@ export const AdminPanel: React.FC = () => {
                 </div>
               )}
 
-              {/* FORM: LOGIN */}
-              {authMode === 'login' ? (
-                <div className="space-y-5">
-                  {/* Instant 1-Click Superadmin Access Box */}
-                  <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-100/90 via-amber-50/50 to-white dark:from-[#1b4332] dark:via-[#133324] dark:to-[#0a1e15] border-2 border-[#fed65b] shadow-md space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-[#012d1d] dark:text-[#fed65b] bg-[#fed65b] text-[#012d1d] px-2 py-0.5 rounded-md shadow-xs">
-                        ⚡ Quick Instant Access
-                      </span>
-                      <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                        Super Admin Verified
-                      </span>
-                    </div>
-
-                    <div className="w-full">
-                      <button
-                        id="admin-instant-unlock-btn"
-                        type="button"
-                        onClick={() => handleInstantSuperAdminLogin('neevsona@gmail.com')}
-                        disabled={authLoading}
-                        className="w-full py-3.5 px-4 rounded-xl bg-[#012d1d] hover:bg-[#144230] text-[#fed65b] font-bold text-xs uppercase tracking-wider shadow-lg transition-all flex items-center justify-center gap-2 border border-[#fed65b]/50 group cursor-pointer active:scale-[0.99]"
-                      >
-                        {authLoading ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin text-[#fed65b]" />
-                            <span>Unlocking Admin Center...</span>
-                          </>
-                        ) : (
-                          <>
-                            <ShieldCheck className="w-4 h-4 text-[#fed65b] group-hover:scale-110 transition-transform" />
-                            <span>1-Click Master Admin (neevsona@gmail.com)</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    <p className="text-[10px] text-slate-500 dark:text-slate-300 text-center">
-                      Direct single-click authorization for verified project owner (neevsona@gmail.com).
-                    </p>
-                  </div>
-
-                  {/* Google OAuth Login Option */}
-                  <div className="p-4 rounded-2xl bg-white dark:bg-[#162f22] border border-slate-200 dark:border-[#275943] shadow-xs space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                        Google Account Auth
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleOpenInNewTab}
-                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        <span>Open in New Tab</span>
-                      </button>
-                    </div>
-
+              {/* Google OAuth Administrative Login */}
+              <div className="space-y-4">
+                <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#162f22] border border-slate-200 dark:border-[#275943] shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Google Administrator Auth
+                    </span>
                     <button
-                      id="admin-google-auth-btn"
                       type="button"
-                      onClick={handleGoogleAdminLogin}
-                      disabled={authLoading || lockoutRemaining > 0}
-                      className="w-full py-3 px-4 rounded-xl border-2 border-slate-300 dark:border-[#275943] bg-slate-50 hover:bg-slate-100 dark:bg-[#12281d] dark:hover:bg-[#183829] text-[#012d1d] dark:text-white font-bold text-xs uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed group cursor-pointer active:scale-[0.99]"
+                      onClick={handleOpenInNewTab}
+                      className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
                     >
-                      {authLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin text-[#012d1d] dark:text-[#fed65b]" />
-                          <span>Verifying Google Identity...</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                            <path
-                              fill="#4285F4"
-                              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                            />
-                            <path
-                              fill="#34A853"
-                              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                            />
-                            <path
-                              fill="#FBBC05"
-                              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                            />
-                            <path
-                              fill="#EA4335"
-                              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                            />
-                          </svg>
-                          <span>Sign In with Admin Google Account</span>
-                        </>
-                      )}
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Open in Dedicated Tab</span>
                     </button>
                   </div>
 
-                  {/* Divider */}
-                  <div className="relative flex items-center justify-center">
-                    <div className="border-t border-slate-200 dark:border-[#275943] w-full" />
-                    <span className="bg-white dark:bg-[#0f241a] px-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest shrink-0">
-                      Or Manual Email & Password
-                    </span>
-                    <div className="border-t border-slate-200 dark:border-[#275943] w-full" />
-                  </div>
-
-                  <form onSubmit={handleAdminLogin} className="space-y-4" autoComplete="off">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                      Administrator Email
-                    </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type="email"
-                        required
-                        value={adminEmail}
-                        onChange={(e) => setAdminEmail(e.target.value)}
-                        placeholder="e.g. neevsona@gmail.com"
-                        autoComplete="off"
-                        className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-[#275943] bg-white dark:bg-[#162f22] text-[#012d1d] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#012d1d]"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                        Password
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAuthMode('forgot');
-                          setAuthError('');
-                          setAuthSuccess('');
-                        }}
-                        className="text-[11px] font-semibold text-[#012d1d] dark:text-[#fed65b] hover:underline"
-                      >
-                        Forgot Password?
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={adminPassword}
-                        onChange={(e) => setAdminPassword(e.target.value)}
-                        placeholder="Enter admin password"
-                        autoComplete="new-password"
-                        className="w-full pl-10 pr-10 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-[#275943] bg-white dark:bg-[#162f22] text-[#012d1d] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#012d1d]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                        title={showPassword ? "Hide password" : "Show password"}
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
                   <button
-                    type="submit"
-                    disabled={authLoading || lockoutRemaining > 0}
-                    className="w-full py-3 bg-[#012d1d] hover:bg-[#144230] text-[#fed65b] font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {authLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Verifying Credentials...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Login with Password</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-                </div>
-              ) : (
-                /* FORM: FORGOT PASSWORD */
-                <form onSubmit={handleForgotPassword} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                      Administrator Registered Email
-                    </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type="email"
-                        required
-                        value={adminEmail}
-                        onChange={(e) => setAdminEmail(e.target.value)}
-                        placeholder="admin@baagfresh.in"
-                        className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-[#275943] bg-white dark:bg-[#162f22] text-[#012d1d] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#012d1d]"
-                        autoFocus
-                      />
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-                      A password recovery token will be dispatched to your administrator inbox for identity verification.
-                    </p>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={authLoading}
-                    className="w-full py-3 bg-[#012d1d] hover:bg-[#144230] text-[#fed65b] font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {authLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Sending Recovery Link...</span>
-                      </>
-                    ) : (
-                      <>
-                        <KeyRound className="w-4 h-4" />
-                        <span>Send Password Reset Link</span>
-                      </>
-                    )}
-                  </button>
-
-                  <button
+                    id="admin-google-auth-btn"
                     type="button"
-                    onClick={() => {
-                      setAuthMode('login');
-                      setAuthError('');
-                      setAuthSuccess('');
-                    }}
-                    className="w-full py-2.5 text-slate-600 dark:text-slate-300 hover:text-[#012d1d] dark:hover:text-[#fed65b] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                    onClick={handleGoogleAdminLogin}
+                    disabled={authLoading || lockoutRemaining > 0}
+                    className="w-full py-3.5 px-4 rounded-xl border-2 border-[#012d1d] dark:border-[#fed65b]/60 bg-white hover:bg-slate-50 dark:bg-[#12281d] dark:hover:bg-[#183829] text-[#012d1d] dark:text-white font-bold text-xs uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed group cursor-pointer active:scale-[0.99]"
                   >
-                    <ArrowLeft className="w-4 h-4" />
-                    <span>Back to Administrator Login</span>
+                    {authLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-[#012d1d] dark:text-[#fed65b]" />
+                        <span>Verifying Administrator Identity...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                          <path
+                            fill="#4285F4"
+                            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                          />
+                          <path
+                            fill="#34A853"
+                            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                          />
+                          <path
+                            fill="#FBBC05"
+                            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                          />
+                          <path
+                            fill="#EA4335"
+                            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                          />
+                        </svg>
+                        <span>Sign In with Google (Admin)</span>
+                      </>
+                    )}
                   </button>
-                </form>
-              )}
+                </div>
+              </div>
 
               <div className="pt-4 border-t border-slate-100 dark:border-[#1b4332] text-center">
                 <div className="text-[11px] text-slate-400 flex items-center justify-center gap-1.5">

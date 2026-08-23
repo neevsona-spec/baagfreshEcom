@@ -157,6 +157,7 @@ interface AppContextType {
   openGmailInquiry: (inquiry: WholesaleInquiry) => void;
 
   // Auth & Database
+  firebaseUser: any | null;
   authLoading: boolean;
   signOutUser: () => Promise<void>;
 
@@ -1040,16 +1041,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updated = { ...user, addresses };
     setUser(updated);
     LocalAuthManager.setSession(updated);
-    if (firebaseUser) {
-      try {
-        await updateUserInFirestore(firebaseUser.uid, { addresses });
-        showToast('Addresses updated successfully', 'success');
-      } catch (err) {
-        console.error('Failed to sync addresses to Firestore:', err);
-      }
-    } else {
-      showToast('Addresses updated successfully', 'success');
-    }
+    showToast('Addresses updated successfully', 'success');
   };
 
   // Notifications & Toast
@@ -1480,7 +1472,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setGmailHubInitialInquiry,
         openGmailInvoice,
         openGmailInquiry,
-        firebaseUser,
+        firebaseUser: null,
         authLoading,
         signOutUser,
         user,

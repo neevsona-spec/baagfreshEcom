@@ -17,7 +17,6 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children, fallback }) =>
   const { 
     isAdminAuthenticated, 
     isAdminUser, 
-    firebaseUser, 
     authLoading,
     setIsAdminOpen,
     showToast 
@@ -25,8 +24,7 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children, fallback }) =>
 
   const isVerifiedAdmin = Boolean(
     isAdminAuthenticated || 
-    isAdminUser || 
-    (firebaseUser?.email && ADMIN_EMAILS.includes(firebaseUser.email.toLowerCase().trim()))
+    isAdminUser
   );
 
   if (authLoading) {

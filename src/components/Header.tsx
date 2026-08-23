@@ -57,7 +57,6 @@ export const Header: React.FC = () => {
     setSearchQuery,
     products,
     setQuickViewProduct,
-    firebaseUser,
     user,
   } = useApp();
 

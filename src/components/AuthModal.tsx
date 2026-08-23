@@ -27,8 +27,7 @@ import {
   signInAsGuest,
   sendPasswordResetLink,
   logOut,
-  ADMIN_EMAILS,
-  signInAsSuperAdminDirect
+  ADMIN_EMAILS
 } from '../lib/firebase';
 import { authLogger, AuthLogEntry } from '../utils/authLogger';
 
@@ -150,41 +149,6 @@ export const AuthModal: React.FC = () => {
       setError(errMsg);
       setShowDiagnostics(true);
       showToast('Google Sign-In notice: popup may be blocked by browser.', 'info');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInstantAdminLogin = async (adminEmail: string = 'neevsona@gmail.com') => {
-    setLoading(true);
-    setError(null);
-    authLogger.startSession('Direct Superadmin Bypass');
-    refreshLogs();
-
-    try {
-      const adminInfo = await signInAsSuperAdminDirect(adminEmail);
-      setIsAdminAuthenticated(true);
-      setUser((prev) => ({
-        ...prev,
-        id: adminInfo.uid,
-        name: adminInfo.name,
-        email: adminInfo.email,
-        memberSince: 'Founding Administrator'
-      }));
-      
-      authLogger.logPrivilegeCheck(adminInfo.email, true, true);
-      authLogger.logSessionHydration(adminInfo.email, 'superadmin', true);
-      authLogger.endSession('success', `Direct 1-Click Master Admin authenticated for ${adminInfo.email}`);
-      refreshLogs();
-
-      showToast(`Master Admin Authorized: ${adminInfo.email}`, 'success');
-      setIsAuthOpen(false);
-    } catch (err: any) {
-      console.error('Admin direct login error:', err);
-      authLogger.logError(err, 'Direct Superadmin Login');
-      authLogger.endSession('failed');
-      refreshLogs();
-      setError('Could not complete instant admin authorization.');
     } finally {
       setLoading(false);
     }
@@ -389,23 +353,18 @@ export const AuthModal: React.FC = () => {
                     <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                     <span className="font-medium">{error}</span>
                   </div>
-                  <div className="flex items-center gap-2 pt-1 border-t border-amber-200/60 dark:border-amber-800/40">
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-amber-200/60 dark:border-amber-800/40">
                     <button
                       type="button"
                       onClick={handleOpenInNewTab}
-                      className="text-[11px] font-bold text-[#012d1d] dark:text-[#fed65b] hover:underline flex items-center gap-1"
+                      className="text-[11px] font-bold text-[#012d1d] dark:text-[#fed65b] hover:underline flex items-center gap-1 cursor-pointer"
                     >
                       <ExternalLink className="w-3 h-3" />
                       <span>Open in New Window</span>
                     </button>
-                    <span className="text-slate-300">•</span>
-                    <button
-                      type="button"
-                      onClick={() => handleInstantAdminLogin('neevsona@gmail.com')}
-                      className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:underline"
-                    >
-                      Instant Owner Auth (neevsona@gmail.com)
-                    </button>
+                    <span className="text-[10px] text-amber-700 dark:text-amber-300">
+                      Standard Patron Auth
+                    </span>
                   </div>
                 </div>
               )}
@@ -504,24 +463,19 @@ export const AuthModal: React.FC = () => {
                       )}
                     </button>
 
-                    {/* Quick 1-Click shortcut for authorized admin */}
                     <div className="flex items-center justify-between px-1 text-[11px] text-slate-500 dark:text-slate-400">
                       <button
                         type="button"
                         onClick={handleOpenInNewTab}
-                        className="hover:underline flex items-center gap-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white"
+                        className="hover:underline flex items-center gap-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white cursor-pointer"
                       >
                         <ExternalLink className="w-3 h-3" />
                         <span>Open in Dedicated Tab</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleInstantAdminLogin('neevsona@gmail.com')}
-                        className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline flex items-center gap-1"
-                      >
-                        <ShieldCheck className="w-3 h-3" />
-                        <span>Owner 1-Click (neevsona)</span>
-                      </button>
+                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                        <span>Secure OAuth 2.0</span>
+                      </span>
                     </div>
                   </div>
 

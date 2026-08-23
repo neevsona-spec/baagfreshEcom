@@ -200,3 +200,35 @@ export interface WholesaleInquiry {
   status: 'new' | 'contacted' | 'quoted' | 'closed';
   notes?: string;
 }
+
+export type UserRole = 'guest' | 'customer' | 'store_manager' | 'superadmin';
+
+export interface RolePermissionPolicy {
+  role: UserRole;
+  title: string;
+  badgeColor: string;
+  description: string;
+  allowedActions: string[];
+  restrictedActions: string[];
+}
+
+export interface SecurityAuditLog {
+  id: string;
+  timestamp: string;
+  action: string;
+  userEmail: string;
+  userRole: UserRole;
+  status: 'granted' | 'denied' | 'flagged';
+  authMethod: 'google_oauth' | 'email_password' | 'guest_session';
+  details: string;
+  ipPlaceholder?: string;
+}
+
+export interface SecurityPostureStatus {
+  googleAuthEnforced: boolean;
+  serverSideVerificationActive: boolean;
+  rbacPolicyLoaded: boolean;
+  firestoreRulesEnforced: boolean;
+  lastAuditCheck: string;
+  authorizedAdminCount: number;
+}

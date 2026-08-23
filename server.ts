@@ -212,6 +212,46 @@ function verifyAdminAuthorization(req: express.Request, res: express.Response, n
   next();
 }
 
+// Server-side Middleware: Enforce Patron / Customer Data Isolation
+function enforceCustomerDataIsolation(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const requestingUid = (req.headers["x-user-uid"] as string || "").trim();
+  const requestingEmail = (req.headers["x-user-email"] as string || "").toLowerCase().trim();
+  const authHeader = req.headers["authorization"] || "";
+  const targetUserId = (req.params.userId || req.query.userId || req.body?.userId || "").toString().trim();
+  const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown";
+
+  let tokenEmail = "";
+  if (authHeader.startsWith("Bearer ")) {
+    tokenEmail = authHeader.replace("Bearer ", "").toLowerCase().trim();
+  }
+
+  const effectiveEmail = requestingEmail || tokenEmail;
+  const isElevatedAdmin = Boolean(effectiveEmail && AUTHORIZED_ADMIN_EMAILS.includes(effectiveEmail));
+
+  // If requesting a specific user's scoped resource (profile, orders, delivery), verify ownership or admin rights
+  if (targetUserId && targetUserId !== requestingUid && !isElevatedAdmin) {
+    const crossAccessViolation: ServerSecurityEvent = {
+      id: "sec-cross-" + Date.now(),
+      timestamp: new Date().toISOString(),
+      action: "CROSS_USER_DATA_ACCESS_BLOCKED",
+      userEmail: effectiveEmail || requestingUid || "unknown-user",
+      status: "denied",
+      ip: clientIp,
+      details: `Blocked attempt to access customer data belonging to userId: "${targetUserId}". Requesting identity: "${requestingUid || effectiveEmail}".`,
+    };
+    serverAuditLog.unshift(crossAccessViolation);
+    if (serverAuditLog.length > 100) serverAuditLog.pop();
+
+    return res.status(403).json({
+      error: "Access Denied: Customer Data Isolation Policy violated. You may only query and view your own private orders and records.",
+      code: "CROSS_USER_ACCESS_FORBIDDEN",
+      targetUserId,
+    });
+  }
+
+  next();
+}
+
 // Health check endpoint
 app.get("/api/health", (_req, res) => {
   res.json({
@@ -284,6 +324,35 @@ app.post("/api/admin/verify-session", (req, res) => {
     userEmail: cleanEmail,
     permissions: ROLE_PERMISSIONS_POLICY[0].allowedActions,
     sessionExpiresInSeconds: 86400,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Customer Session & Isolation Audit Verification Endpoint
+app.post("/api/customer/verify-access", enforceCustomerDataIsolation, (req, res) => {
+  const { userId, orderId, action = "read_orders" } = req.body;
+  const requestingUid = (req.headers["x-user-uid"] as string || "").trim();
+  const requestingEmail = (req.headers["x-user-email"] as string || "").toLowerCase().trim();
+  const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown";
+
+  const accessEvent: ServerSecurityEvent = {
+    id: "sec-cust-" + Date.now(),
+    timestamp: new Date().toISOString(),
+    action: "CUSTOMER_ISOLATED_ACCESS_GRANTED",
+    userEmail: requestingEmail || requestingUid || "customer",
+    status: "granted",
+    ip: clientIp,
+    details: `Authorized isolated data query for customer UID: ${requestingUid}. Action: ${action}${orderId ? ` on Order #${orderId}` : ""}.`,
+  };
+  serverAuditLog.unshift(accessEvent);
+  if (serverAuditLog.length > 100) serverAuditLog.pop();
+
+  return res.json({
+    authorized: true,
+    isolated: true,
+    userId: requestingUid,
+    role: "customer",
+    dataScope: "Strict User-Scoped Self Data Only",
     timestamp: new Date().toISOString(),
   });
 });

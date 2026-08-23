@@ -184,7 +184,7 @@ export const UserProfileModal: React.FC = () => {
                 className="px-3 py-1.5 rounded-xl bg-[#fed65b] text-[#012d1d] text-xs font-bold hover:bg-[#ffe382] transition-colors flex items-center gap-1.5 shadow"
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Google Sign In</span>
+                <span>Sign In / Register</span>
               </button>
             ) : (
               <button

@@ -54,47 +54,41 @@ export const AuthModal: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    try {
-      if (mode === 'signup') {
-        const result = LocalAuthManager.register({
-          name: cleanName,
-          emailOrPhone: cleanContact,
-          password: cleanPass
-        });
-
-        if (!result.success || !result.user) {
-          setError(result.message || 'Could not create account. Please try again.');
-          return;
-        }
-
-        setUser(result.user);
-        showToast(`Welcome to BAAGFRESH, ${result.user.name}!`, 'success');
+    // Completely bypass Firebase Auth - use LocalStorage only
+    if (mode === 'signup') {
+      const newUser = { 
+        name: cleanName, 
+        email: cleanContact, 
+        phone: '',
+        id: Date.now().toString(),
+        memberSince: new Date().toLocaleDateString(),
+        addresses: [],
+        avatar: '',
+        is2FAEnabled: false,
+        e2eEncryptionKeyFingerprint: '',
+        cloudSyncEnabled: false
+      };
+      
+      localStorage.setItem('currentUser', JSON.stringify(newUser));
+      setUser(newUser);
+      showToast('Account created successfully!', 'success');
+      setIsAuthOpen(false);
+    } else {
+      // Simple local sign in logic
+      const savedUser = localStorage.getItem('currentUser');
+      if (savedUser) {
+        setUser(JSON.parse(savedUser));
+        showToast('Signed in successfully!', 'success');
         setIsAuthOpen(false);
       } else {
-        const result = LocalAuthManager.login({
-          emailOrPhone: cleanContact,
-          password: cleanPass
-        });
-
-        if (!result.success || !result.user) {
-          setError(result.message || 'Could not sign in. Please check your credentials.');
-          return;
-        }
-
-        setUser(result.user);
-        showToast(`Welcome back, ${result.user.name}!`, 'success');
-        setIsAuthOpen(false);
+        setError('No account found. Please sign up first.');
+        setLoading(false);
       }
-    } catch (err: any) {
-      console.error('Customer Auth Notice:', err);
-      setError(err?.message || 'Unable to complete sign-in. Please try again.');
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleSignOut = () => {
-    LocalAuthManager.clearSession();
+    localStorage.removeItem('currentUser');
     setUser(null);
     showToast('Signed out successfully', 'info');
     setIsAuthOpen(false);

@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User as FirebaseUser } from 'firebase/auth';
 import { 
   Product, 
   CartItem, 
@@ -19,7 +18,6 @@ import { PRODUCTS } from '../data/products';
 import { CURRENCIES, formatCurrencyPrice } from '../data/currencies';
 import { TRANSLATIONS } from '../data/translations';
 import { 
-  auth, 
   syncUserProfile, 
   updateUserInFirestore, 
   saveOrderToFirestore, 
@@ -28,7 +26,6 @@ import {
   saveWishlistToFirestore, 
   getWishlistFromFirestore, 
   checkIsAdmin,
-  logOut,
   subscribeToProducts,
   saveProductToFirestore,
   bulkSyncProductsToFirestore,
@@ -44,7 +41,6 @@ import {
   deleteWholesaleInquiryFromFirestore
 } from '../lib/firebase';
 import { LocalAuthManager } from '../services/LocalAuthManager';
-import { onAuthStateChanged } from 'firebase/auth';
 
 interface ToastItem {
   id: string;
@@ -161,7 +157,6 @@ interface AppContextType {
   openGmailInquiry: (inquiry: WholesaleInquiry) => void;
 
   // Auth & Database
-  firebaseUser: FirebaseUser | null;
   authLoading: boolean;
   signOutUser: () => Promise<void>;
 
@@ -926,7 +921,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
 
   // User & Auth State
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(false);
   const [user, setUser] = useState<UserProfile | null>(() => {
     const savedCustomer = LocalAuthManager.getCurrentUser();
@@ -1022,96 +1016,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   ]);
 
-  // Firebase Auth Listener and Firestore sync
+  // Initialize user from LocalAuthManager
   useEffect(() => {
-    let unsubscribeOrders: (() => void) | undefined;
-
-    const unsubscribeAuth = onAuthStateChanged(
-      auth,
-      async (fbUser) => {
-        setFirebaseUser(fbUser);
-        setAuthLoading(true);
-
-        if (fbUser) {
-          try {
-            // Check Admin status against Firestore admins / trusted list
-            const adminCheck = await checkIsAdmin(fbUser.uid, fbUser.email);
-            setIsAdminUser(adminCheck);
-            if (adminCheck) {
-              handleSetAdminAuth(true);
-            }
-
-            // 1. Sync User Profile with Firestore
-            const profile = await syncUserProfile(fbUser);
-            setUser(profile);
-
-            // 2. Subscribe to user orders in real-time
-            unsubscribeOrders = subscribeToUserOrders(fbUser.uid, (remoteOrders) => {
-              if (remoteOrders && remoteOrders.length > 0) {
-                setOrders(remoteOrders);
-              }
-            });
-
-            // 3. Load user wishlist from Firestore
-            const savedWishlistIds = await getWishlistFromFirestore(fbUser.uid);
-            if (savedWishlistIds.length > 0) {
-              const matchedProducts = PRODUCTS.filter((p) => savedWishlistIds.includes(p.id));
-              if (matchedProducts.length > 0) {
-                setWishlist(matchedProducts);
-              }
-            }
-          } catch (err) {
-            console.warn('Firebase user profile sync notice:', err);
-          }
-        } else {
-          setIsAdminUser(false);
-          // Only clear admin authentication if there is no active persistent admin session stored
-          try {
-            const hasActiveSession =
-              localStorage.getItem('baagfresh_admin_session') === 'active' ||
-              sessionStorage.getItem('baagfresh_admin_session') === 'active';
-            if (!hasActiveSession) {
-              setIsAdminAuthenticated(false);
-            }
-          } catch {
-            setIsAdminAuthenticated(false);
-          }
-
-          if (unsubscribeOrders) {
-            unsubscribeOrders();
-          }
-          // Preserve local customer session if signed in directly
-          const localCustomer = LocalAuthManager.getCurrentUser();
-          if (localCustomer) {
-            setUser(localCustomer);
-          } else {
-            setUser(INITIAL_USER);
-          }
-        }
-        setAuthLoading(false);
-      },
-      (error) => {
-        console.warn('Firebase Auth State listener notice:', error?.message || error);
-        setAuthLoading(false);
+      const localCustomer = LocalAuthManager.getCurrentUser();
+      if (localCustomer) {
+        setUser(localCustomer);
+      } else {
+        setUser(INITIAL_USER);
       }
-    );
-
-    return () => {
-      unsubscribeAuth();
-      if (unsubscribeOrders) {
-        unsubscribeOrders();
-      }
-    };
+      setAuthLoading(false);
   }, []);
 
   const signOutUser = async () => {
-    try {
-      if (firebaseUser) {
-        await logOut();
-      }
-    } catch (e) {
-      console.warn('Sign out notice:', e);
-    }
     LocalAuthManager.clearSession();
     setIsAdminUser(false);
     handleSetAdminAuth(false);

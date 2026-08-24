@@ -253,7 +253,7 @@ export const CartDrawer: React.FC = () => {
               {/* Price Calculation Summary */}
               <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300 pt-2 border-t border-slate-200 dark:border-[#275943]">
                 <div className="flex justify-between">
-                  <span>{t('subtotal')}:</span>
+                  <span>Subtotal:</span>
                   <span className="font-semibold">{formatPrice(cartSubtotal)}</span>
                 </div>
                 {cartDiscount > 0 && (
@@ -263,21 +263,13 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span>{t('shipping')}:</span>
-                  <span>
-                    {cartShipping === 0 ? (
-                      <strong className="text-emerald-600 dark:text-emerald-400">FREE</strong>
-                    ) : (
-                      formatPrice(cartShipping)
-                    )}
+                  <span>Delivery Charges:</span>
+                  <span className="font-semibold">
+                    {cartShipping === 0 ? <strong className="text-emerald-600 dark:text-emerald-400">FREE</strong> : formatPrice(cartShipping)}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span>{t('taxes')}:</span>
-                  <span>{formatPrice(cartTax)}</span>
-                </div>
                 <div className="flex justify-between text-sm font-extrabold text-[#012d1d] dark:text-[#fed65b] pt-1.5 border-t border-slate-200 dark:border-[#275943]">
-                  <span>{t('total')}:</span>
+                  <span>Total Payable:</span>
                   <span className="text-base">{formatPrice(cartTotal)}</span>
                 </div>
               </div>

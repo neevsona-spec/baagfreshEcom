@@ -1105,9 +1105,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     rawDiscount = currentPromoObj.maxDiscount;
   }
   const cartDiscount = rawDiscount;
-  const cartShipping = cartSubtotal >= storeSettings.freeShippingThreshold || cartSubtotal === 0 ? 0 : storeSettings.flatShippingFee;
+  const cartShipping = cartSubtotal >= 999 ? 0 : 99;
   const cartTax = Math.max(0, (cartSubtotal - cartDiscount)) * (storeSettings.taxRatePercent / 100);
-  const cartTotal = Math.max(0, cartSubtotal - cartDiscount + cartShipping + cartTax);
+  const cartTotal = Number(cartSubtotal - cartDiscount + cartShipping + cartTax);
 
   // Wishlist
   const toggleWishlist = (product: Product) => {
@@ -1139,17 +1139,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Orders
   const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 'date' | 'status' | 'trackingSteps' | 'eta'>): Promise<Order> => {
     const randomSuffix = Math.floor(10000 + Math.random() * 90000);
+    const shippingFee = orderData.subtotal >= 999 ? 0 : 99;
+    const finalGrandTotal = Number(orderData.subtotal) - Number(orderData.discount || 0) + Number(shippingFee) + Number(orderData.tax || 0);
+
     const newOrder: Order = {
       ...orderData,
-      id: `ord-${Date.now()}`,
+      id: `BF-${Math.floor(10000 + Math.random() * 90000)}-VRN`,
+      items: orderData.items,
+      subtotal: orderData.subtotal,
+      shippingFee: shippingFee,
+      total: finalGrandTotal,
+      paymentMethod: orderData.paymentMethod,
+      date: new Date().toISOString(),
+      status: "Order Confirmed",
       orderNumber: `BF-${randomSuffix}-VRN`,
-      date: 'Just now',
-      status: 'confirmed',
       eta: 'Estimated in 2-3 business days',
       trackingSteps: [
         {
           title: 'Order Confirmed & Placed',
-          description: `Order #${newOrderNumber(randomSuffix)} received & secured in Varanasi packing hub.`,
+          description: `Order received & secured in Varanasi packing hub.`,
           date: 'Just now',
           completed: true,
           current: true,

@@ -30,6 +30,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
 
   return (
     <div
+      id={'product-card-' + product.id}
+      style={{ scrollMarginTop: '80px' }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className="group relative bg-white dark:bg-[#12281d] rounded-2xl border border-slate-200 dark:border-[#1e3f2e] hover:border-[#c79a1f] dark:hover:border-[#fed65b] shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between overflow-hidden"

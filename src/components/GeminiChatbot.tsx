@@ -333,36 +333,30 @@ export const GeminiChatbot: React.FC = () => {
     <>
       {/* Floating Trigger Button */}
       {!isChatbotOpen && (
-        <div className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end gap-2 animate-bounce-subtle">
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end gap-2 animate-bounce-subtle">
           {hasUnread && (
-            <div className="bg-[#012d1d] text-[#fed65b] border border-[#fed65b] px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse">
-              1 New Recommendation!
+            <div className="bg-[#012d1d] text-[#fed65b] border border-[#fed65b] px-2 py-0.5 rounded-full text-[10px] font-bold shadow-lg animate-pulse">
+              1 New!
             </div>
           )}
           <button
             id="gemini-chatbot-launcher-btn"
             onClick={() => setIsChatbotOpen(true)}
-            className="group relative flex items-center gap-2.5 px-4 py-2.5 bg-gradient-to-r from-[#012d1d] via-[#163a2c] to-[#012d1d] text-[#fed65b] rounded-full shadow-2xl hover:shadow-[0_10px_25px_rgba(254,214,91,0.35)] border-2 border-[#fed65b] transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
+            className="group relative flex items-center gap-2 px-3 py-2 bg-[#012d1d] text-[#fed65b] rounded-full shadow-xl border border-[#fed65b]/50 transition-all transform hover:scale-105 active:scale-95 cursor-pointer"
             aria-label="Chat with Us"
           >
             <div className="relative shrink-0">
               <img
                 src="/support-agent-avatar.svg"
                 alt="Support Agent"
-                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-[#fed65b]/60 bg-white p-0.5 shadow-sm group-hover:scale-110 transition-transform"
+                className="w-7 h-7 rounded-full object-cover border border-[#fed65b]/60 bg-white p-0.5 shadow-sm"
                 referrerPolicy="no-referrer"
               />
-              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-[#012d1d] animate-ping" />
-              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-[#012d1d]" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full ring-2 ring-[#012d1d] animate-ping" />
             </div>
-            <div className="text-left pr-1">
-              <span className="block text-xs font-cinzel font-black tracking-wider uppercase">
-                Chat with Us
-              </span>
-              <span className="block text-[9px] text-[#fed65b]/80 font-medium">
-                Online • AI & Live Support
-              </span>
-            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider">
+              Help
+            </span>
           </button>
         </div>
       )}

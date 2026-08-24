@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -337,243 +338,303 @@ export const HeroSlider: React.FC = () => {
           </div>
         </div>
 
-        {/* 2-Column Responsive Showcase Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
-          
-          {/* Left Column: Brand Story & Live Slide Information */}
-          <div className="lg:col-span-5 space-y-5 sm:space-y-6">
-            
-            {/* Active Tag & Origin Pill */}
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#fed65b]/15 border border-[#fed65b]/35 text-[#fed65b] text-xs font-semibold tracking-wide backdrop-blur-sm">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{activeItem.categoryLabel}</span>
-              <span className="text-white/40">•</span>
-              <span className="text-white/90">{activeItem.tag}</span>
-            </div>
-
-            {/* Main Dynamic Heading */}
-            <div className="space-y-1.5">
-              <div className="text-xs font-semibold text-[#fed65b]/90 uppercase tracking-wider font-cinzel">
-                {activeItem.hindiName}
-              </div>
-              <h1 className="font-cinzel text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white leading-tight tracking-tight drop-shadow-sm">
-                {activeItem.name}
-              </h1>
-            </div>
-
-            {/* Badge Highlight Card */}
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md space-y-2">
-              <div className="flex items-center justify-between text-xs text-[#fed65b] font-bold">
-                <span className="flex items-center gap-1.5">
-                  <Award className="w-4 h-4 text-[#fed65b]" />
-                  {activeItem.badge}
-                </span>
-                <span className="flex items-center gap-1 text-amber-300">
-                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                  {activeItem.rating} ({activeItem.reviewsCount})
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-[#e6deca] leading-relaxed font-normal">
-                {activeItem.highlight}
-              </p>
-              <div className="flex items-center gap-2 text-[11px] text-[#c9bfa8] pt-1">
-                <Flame className="w-3.5 h-3.5 text-[#fed65b]" />
-                <span><strong>Aroma & Flavor:</strong> {activeItem.aromaProfile}</span>
-              </div>
-            </div>
-
-            {/* Price & Primary Call to Actions */}
-            <div className="flex flex-wrap items-center gap-4 pt-1">
-              <div>
-                <div className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
-                  Standard Pack ({activeItem.weight})
+        {/* Showcase Layout */}
+        <div className="relative">
+          {/* Mobile Compact Hero Card (Hidden on LG) */}
+          <div className="lg:hidden">
+             <AnimatePresence mode="wait">
+              <motion.div
+                key={activeItem.id}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                drag="x"
+                dragConstraints={{ left: 0, right: 0 }}
+                onDragEnd={(e, { offset, velocity }) => {
+                  const swipe = Math.abs(offset.x) * velocity.x;
+                  if (swipe < -10000) handleNext();
+                  else if (swipe > 10000) handlePrev();
+                }}
+                className="bg-white/5 border border-white/10 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md"
+              >
+                <div className="h-[220px] relative">
+                  <img src={activeItem.image} alt={activeItem.name} className="w-full h-full object-cover" />
+                  <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm text-[#fed65b] text-[10px] px-2 py-1 rounded-full font-bold">{activeItem.origin}</div>
                 </div>
-                <div className="font-cinzel text-2xl sm:text-3xl font-bold text-[#fed65b]">
-                  {formatPrice(activeItem.price)}
+                <div className="p-4 space-y-3">
+                  <div>
+                    <h2 className="text-lg font-cinzel font-bold text-white leading-tight">{activeItem.name}</h2>
+                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                      <span>{activeItem.rating} ({activeItem.reviewsCount})</span>
+                      <span className="text-[#fed65b] font-bold">₹{activeItem.price}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-300 line-clamp-1">{activeItem.highlight}</p>
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleQuickView(activeItem.id); }}
+                      className="relative z-30 pointer-events-auto cursor-pointer w-full py-2.5 rounded-xl bg-white/10 text-white font-bold text-xs"
+                    >
+                      Quick View
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleDirectAddToCart(activeItem.id); }}
+                      className="relative z-30 pointer-events-auto cursor-pointer w-full py-2.5 rounded-xl bg-[#fed65b] text-[#012d1d] font-bold text-xs"
+                    >
+                      Add to Cart
+                    </button>
+                  </div>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-2.5 flex-1 min-w-[200px]">
-                <button
-                  onClick={() => handleDirectAddToCart(activeItem.id)}
-                  className="flex-1 inline-flex items-center justify-center gap-2 bg-[#fed65b] hover:bg-[#ffe07a] text-[#012d1d] px-4 py-3 rounded-xl font-bold text-xs sm:text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-200"
-                >
-                  <ShoppingBag className="w-4 h-4" />
-                  <span>Add To Cart</span>
-                </button>
-
-                <button
-                  onClick={() => handleQuickView(activeItem.id)}
-                  className="inline-flex items-center justify-center gap-1.5 bg-white/10 hover:bg-white/20 text-[#FAF3E0] border border-white/25 px-3.5 py-3 rounded-xl font-semibold text-xs sm:text-sm backdrop-blur-md transition-all"
-                  title="Interactive Quick View"
-                >
-                  <Eye className="w-4 h-4" />
-                  <span>Quick View</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Trust Assurances */}
-            <div className="grid grid-cols-3 gap-2 pt-2 text-[11px] text-[#dcd1ba] border-t border-white/10">
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#fed65b] shrink-0" />
-                <span>Single-Origin Pure</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#fed65b] shrink-0" />
-                <span>Nitrogen Flushed</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#fed65b] shrink-0" />
-                <span>Orchard Direct</span>
-              </div>
-            </div>
-
+              </motion.div>
+             </AnimatePresence>
+             {/* Indicators */}
+             <div className="flex justify-center gap-2 mt-4">
+               {filteredItems.map((_, i) => (
+                 <button key={i} onClick={() => handleSelectSlide(i)} className={`w-2 h-2 rounded-full ${i === currentIndex ? 'bg-[#fed65b]' : 'bg-white/20'}`} />
+               ))}
+             </div>
           </div>
 
-          {/* Right Column: Animated Slideshow Display Stage */}
-          <div 
-            className="lg:col-span-7 relative"
-            onMouseEnter={() => setIsPlaying(false)}
-            onMouseLeave={() => setIsPlaying(true)}
-          >
-            {/* The Outer Gold Highlight Bezel Frame */}
-            <div className="relative rounded-3xl overflow-hidden p-1.5 bg-gradient-to-tr from-[#fed65b]/40 via-emerald-600/30 to-[#fed65b]/20 shadow-2xl border border-white/15">
+          {/* Desktop Showcase Layout (Hidden on Mobile) */}
+          <div className="hidden lg:grid grid-cols-12 gap-10 items-center">
+            
+            {/* Left Column: Brand Story & Live Slide Information */}
+            <div className="col-span-5 space-y-6">
               
-              {/* Slideshow Display Screen */}
-              <div className="relative aspect-[4/3] sm:aspect-[16/10] md:aspect-[16/9] lg:aspect-[4/3] w-full rounded-[22px] overflow-hidden bg-black/60 group">
-                
-                {/* Images Layer with Crossfade Animation & Ken Burns Zoom */}
-                {filteredItems.map((item, idx) => {
-                  const isActive = idx === currentIndex;
-                  return (
-                    <div
-                      key={item.id}
-                      className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
-                        isActive ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
-                      }`}
-                    >
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className={`w-full h-full object-cover object-center transform transition-transform duration-[6000ms] ease-out ${
-                          isActive ? 'scale-108' : 'scale-100'
-                        }`}
-                        referrerPolicy="no-referrer"
-                      />
-
-                      {/* Vignette Shadow Overlay for Typography Contrast */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/30" />
-
-                      {/* Floating Category Badge inside Image */}
-                      <div className="absolute top-4 left-4 z-20">
-                        <span className="px-3 py-1 rounded-full bg-black/60 border border-[#fed65b]/50 text-[#fed65b] text-[11px] font-bold tracking-wider backdrop-blur-md uppercase">
-                          {item.origin}
-                        </span>
-                      </div>
-
-                      {/* Floating Tag */}
-                      <div className="absolute top-4 right-4 z-20">
-                        <span className="px-3 py-1 rounded-full bg-[#012d1d]/80 border border-white/20 text-white text-[11px] font-semibold backdrop-blur-md">
-                          Popular in our collection
-                        </span>
-                      </div>
-
-                      {/* Bottom Caption Overlay */}
-                      <div className="absolute bottom-4 left-4 right-4 z-20 flex items-end justify-between gap-4">
-                        <div className="bg-black/65 backdrop-blur-md px-3.5 py-2 rounded-xl border border-white/10 max-w-[80%]">
-                          <div className="text-[11px] text-[#fed65b] font-bold font-cinzel uppercase">
-                            {item.hindiName}
-                          </div>
-                          <div className="text-sm sm:text-base font-bold text-white truncate">
-                            {item.name}
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => handleQuickView(item.id)}
-                          className="bg-[#fed65b] hover:bg-[#ffe07a] text-[#012d1d] p-2.5 rounded-xl shadow-lg hover:scale-105 transition-all shrink-0"
-                          title="View Full Product Details"
-                        >
-                          <ArrowRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Left/Right Slide Arrows */}
-                <button
-                  onClick={handlePrev}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 z-30 p-2.5 rounded-full bg-black/50 hover:bg-[#fed65b] text-white hover:text-[#012d1d] backdrop-blur-md border border-white/20 transition-all opacity-80 hover:opacity-100"
-                  aria-label="Previous Slide"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-
-                <button
-                  onClick={handleNext}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 z-30 p-2.5 rounded-full bg-black/50 hover:bg-[#fed65b] text-white hover:text-[#012d1d] backdrop-blur-md border border-white/20 transition-all opacity-80 hover:opacity-100"
-                  aria-label="Next Slide"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-
-                {/* Animated Slide Progress Bar */}
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-30">
-                  <div 
-                    className="h-full bg-[#fed65b] transition-all ease-linear"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-
+              {/* Active Tag & Origin Pill */}
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#fed65b]/15 border border-[#fed65b]/35 text-[#fed65b] text-xs font-semibold tracking-wide backdrop-blur-sm">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{activeItem.categoryLabel}</span>
+                <span className="text-white/40">•</span>
+                <span className="text-white/90">{activeItem.tag}</span>
               </div>
 
-              {/* Interactive Thumbnail Carousel Strip Below Slide Screen */}
-              <div className="mt-3 px-2 py-1 flex items-center justify-between gap-2 overflow-x-auto scrollbar-none">
-                
-                {/* Play / Pause Toggle Button */}
-                <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-[#fed65b] border border-white/15 transition-all shrink-0 flex items-center gap-1 text-[11px] font-bold"
-                  title={isPlaying ? 'Pause Slideshow' : 'Play Slideshow'}
-                >
-                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                  <span className="hidden sm:inline">{isPlaying ? 'Pause' : 'Play'}</span>
-                </button>
+              {/* Main Dynamic Heading */}
+              <div className="space-y-1.5">
+                <div className="text-xs font-semibold text-[#fed65b]/90 uppercase tracking-wider font-cinzel">
+                  {activeItem.hindiName}
+                </div>
+                <h1 className="font-cinzel text-5xl font-bold text-white leading-tight tracking-tight drop-shadow-sm">
+                  {activeItem.name}
+                </h1>
+              </div>
 
-                {/* Mini Thumbnails Selector */}
-                <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
+              {/* Badge Highlight Card */}
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md space-y-2">
+                <div className="flex items-center justify-between text-xs text-[#fed65b] font-bold">
+                  <span className="flex items-center gap-1.5">
+                    <Award className="w-4 h-4 text-[#fed65b]" />
+                    {activeItem.badge}
+                  </span>
+                  <span className="flex items-center gap-1 text-amber-300">
+                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                    {activeItem.rating} ({activeItem.reviewsCount})
+                  </span>
+                </div>
+                <p className="text-sm text-[#e6deca] leading-relaxed font-normal">
+                  {activeItem.highlight}
+                </p>
+                <div className="flex items-center gap-2 text-[11px] text-[#c9bfa8] pt-1">
+                  <Flame className="w-3.5 h-3.5 text-[#fed65b]" />
+                  <span><strong>Aroma & Flavor:</strong> {activeItem.aromaProfile}</span>
+                </div>
+              </div>
+
+              {/* Price & Primary Call to Actions */}
+              <div className="flex items-center gap-6 pt-2">
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
+                    Standard Pack ({activeItem.weight})
+                  </div>
+                  <div className="font-cinzel text-3xl font-bold text-[#fed65b]">
+                    {formatPrice(activeItem.price)}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 flex-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDirectAddToCart(activeItem.id); }}
+                    className="relative z-30 pointer-events-auto cursor-pointer flex-1 inline-flex items-center justify-center gap-2 bg-[#fed65b] hover:bg-[#ffe07a] text-[#012d1d] px-6 py-3.5 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all"
+                  >
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>Add To Cart</span>
+                  </button>
+
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleQuickView(activeItem.id); }}
+                    className="relative z-30 pointer-events-auto cursor-pointer inline-flex items-center justify-center gap-1.5 bg-white/10 hover:bg-white/20 text-[#FAF3E0] border border-white/25 px-5 py-3.5 rounded-xl font-semibold text-sm backdrop-blur-md transition-all"
+                    title="Interactive Quick View"
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span>Quick View</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Trust Assurances */}
+              <div className="grid grid-cols-3 gap-2 pt-4 text-[11px] text-[#dcd1ba] border-t border-white/10">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#fed65b] shrink-0" />
+                  <span>Single-Origin Pure</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#fed65b] shrink-0" />
+                  <span>Nitrogen Flushed</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#fed65b] shrink-0" />
+                  <span>Orchard Direct</span>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Right Column: Animated Slideshow Display Stage */}
+            <div 
+              className="col-span-7 relative"
+              onMouseEnter={() => setIsPlaying(false)}
+              onMouseLeave={() => setIsPlaying(true)}
+            >
+              {/* The Outer Gold Highlight Bezel Frame */}
+              <div className="relative rounded-3xl overflow-hidden p-1.5 bg-gradient-to-tr from-[#fed65b]/40 via-emerald-600/30 to-[#fed65b]/20 shadow-2xl border border-white/15">
+                
+                {/* Slideshow Display Screen */}
+                <div className="relative aspect-[4/3] w-full rounded-[22px] overflow-hidden bg-black/60 group">
+                  
+                  {/* Images Layer with Crossfade Animation & Ken Burns Zoom */}
                   {filteredItems.map((item, idx) => {
-                    const isSelected = idx === currentIndex;
+                    const isActive = idx === currentIndex;
                     return (
-                      <button
+                      <div
                         key={item.id}
-                        onClick={() => handleSelectSlide(idx)}
-                        className={`relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden shrink-0 border-2 transition-all duration-300 ${
-                          isSelected
-                            ? 'border-[#fed65b] scale-105 shadow-md shadow-[#fed65b]/30 ring-2 ring-[#fed65b]/50'
-                            : 'border-white/20 opacity-60 hover:opacity-100 hover:border-white/50'
+                        className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
+                          isActive ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
                         }`}
-                        title={item.name}
                       >
                         <img
                           src={item.image}
                           alt={item.name}
-                          className="w-full h-full object-cover"
+                          className={`w-full h-full object-cover object-center transform transition-transform duration-[6000ms] ease-out ${
+                            isActive ? 'scale-108' : 'scale-100'
+                          }`}
                           referrerPolicy="no-referrer"
                         />
-                        {isSelected && (
-                          <div className="absolute inset-0 bg-[#fed65b]/20 mix-blend-overlay" />
-                        )}
-                      </button>
+
+                        {/* Vignette Shadow Overlay for Typography Contrast */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/30" />
+
+                        {/* Floating Category Badge inside Image */}
+                        <div className="absolute top-4 left-4 z-20">
+                          <span className="px-3 py-1 rounded-full bg-black/60 border border-[#fed65b]/50 text-[#fed65b] text-[11px] font-bold tracking-wider backdrop-blur-md uppercase">
+                            {item.origin}
+                          </span>
+                        </div>
+
+                        {/* Floating Tag */}
+                        <div className="absolute top-4 right-4 z-20">
+                          <span className="px-3 py-1 rounded-full bg-[#012d1d]/80 border border-white/20 text-white text-[11px] font-semibold backdrop-blur-md">
+                            Popular in our collection
+                          </span>
+                        </div>
+
+                        {/* Bottom Caption Overlay */}
+                        <div className="absolute bottom-4 left-4 right-4 z-20 flex items-end justify-between gap-4">
+                          <div className="bg-black/65 backdrop-blur-md px-3.5 py-2 rounded-xl border border-white/10 max-w-[80%]">
+                            <div className="text-[11px] text-[#fed65b] font-bold font-cinzel uppercase">
+                              {item.hindiName}
+                            </div>
+                            <div className="text-base font-bold text-white truncate">
+                              {item.name}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleQuickView(item.id)}
+                            className="bg-[#fed65b] hover:bg-[#ffe07a] text-[#012d1d] p-2.5 rounded-xl shadow-lg hover:scale-105 transition-all shrink-0"
+                            title="View Full Product Details"
+                          >
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                     );
                   })}
+
+                  {/* Left/Right Slide Arrows */}
+                  <button
+                    onClick={handlePrev}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 z-30 p-2.5 rounded-full bg-black/50 hover:bg-[#fed65b] text-white hover:text-[#012d1d] backdrop-blur-md border border-white/20 transition-all opacity-80 hover:opacity-100"
+                    aria-label="Previous Slide"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+
+                  <button
+                    onClick={handleNext}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 z-30 p-2.5 rounded-full bg-black/50 hover:bg-[#fed65b] text-white hover:text-[#012d1d] backdrop-blur-md border border-white/20 transition-all opacity-80 hover:opacity-100"
+                    aria-label="Next Slide"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+
+                  {/* Animated Slide Progress Bar */}
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-30">
+                    <div 
+                      className="h-full bg-[#fed65b] transition-all ease-linear"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+
                 </div>
 
-                {/* Slide Counter */}
-                <div className="text-[11px] text-slate-300 font-bold px-2 py-1 rounded-lg bg-black/40 border border-white/10 shrink-0">
-                  <span className="text-[#fed65b]">{currentIndex + 1}</span> / {filteredItems.length}
+                {/* Interactive Thumbnail Carousel Strip Below Slide Screen */}
+                <div className="mt-3 px-2 py-1 flex items-center justify-between gap-2 overflow-x-auto scrollbar-none">
+                  
+                  {/* Play / Pause Toggle Button */}
+                  <button
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-[#fed65b] border border-white/15 transition-all shrink-0 flex items-center gap-1 text-[11px] font-bold"
+                    title={isPlaying ? 'Pause Slideshow' : 'Play Slideshow'}
+                  >
+                    {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    <span>{isPlaying ? 'Pause' : 'Play'}</span>
+                  </button>
+
+                  {/* Mini Thumbnails Selector */}
+                  <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
+                    {filteredItems.map((item, idx) => {
+                      const isSelected = idx === currentIndex;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => handleSelectSlide(idx)}
+                          className={`relative w-12 h-12 rounded-xl overflow-hidden shrink-0 border-2 transition-all duration-300 ${
+                            isSelected
+                              ? 'border-[#fed65b] scale-105 shadow-md shadow-[#fed65b]/30 ring-2 ring-[#fed65b]/50'
+                              : 'border-white/20 opacity-60 hover:opacity-100 hover:border-white/50'
+                          }`}
+                          title={item.name}
+                        >
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                          {isSelected && (
+                            <div className="absolute inset-0 bg-[#fed65b]/20 mix-blend-overlay" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Slide Counter */}
+                  <div className="text-[11px] text-slate-300 font-bold px-2 py-1 rounded-lg bg-black/40 border border-white/10 shrink-0">
+                    <span className="text-[#fed65b]">{currentIndex + 1}</span> / {filteredItems.length}
+                  </div>
+
                 </div>
 
               </div>
@@ -581,10 +642,9 @@ export const HeroSlider: React.FC = () => {
             </div>
 
           </div>
-
         </div>
-
       </div>
+
 
       {/* Trust Badges Bar */}
       <div className="bg-[#FAF3E0] dark:bg-[#12281d] border-b border-[#e8dfc8] dark:border-[#1e3f2e] py-4 sm:py-5 text-slate-900 dark:text-[#FAF3E0] transition-colors">

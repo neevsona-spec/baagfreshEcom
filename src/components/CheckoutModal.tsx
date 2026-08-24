@@ -43,43 +43,50 @@ export const CheckoutModal: React.FC = () => {
   const [isAddingNewAddress, setIsAddingNewAddress] = useState(false);
 
   // Address fields
+  type AddressFormState = {
+    fullName: string;
+    phone: string;
+    email: string;
+    street: string;
+    apartment: string;
+    city: string;
+    state: string;
+    pincode: string;
+  };
+
+  const getSavedAddress = (): AddressFormState => {
+    try {
+      const saved = localStorage.getItem('baagfresh_saved_address');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Failed to parse saved address", e);
+    }
+    return {
+      fullName: user?.name || '',
+      phone: user?.phone || '',
+      email: user?.email || '',
+      street: '',
+      apartment: '',
+      city: '',
+      state: '',
+      pincode: ''
+    };
+  };
+
+  const [formData, setFormData] = useState<AddressFormState>(getSavedAddress);
   const [selectedAddressId, setSelectedAddressId] = useState<string>('custom');
-  const [fullName, setFullName] = useState<string>('');
-  const [phone, setPhone] = useState<string>('');
-  const [email, setEmail] = useState<string>('');
-  const [street, setStreet] = useState<string>('');
-  const [apartment, setApartment] = useState<string>('');
-  const [city, setCity] = useState<string>('');
-  const [state, setState] = useState<string>('');
-  const [pincode, setPincode] = useState<string>('');
 
   // Load saved address on mount
   React.useEffect(() => {
-    let savedAddress: Address | null = null;
-    if (user) {
-      savedAddress = user.addresses.find(a => a.isDefault) || user.addresses[0] || null;
-    } else {
-      const guestAddress = localStorage.getItem('baagfresh_guest_address');
-      if (guestAddress) {
-        try {
-          savedAddress = JSON.parse(guestAddress);
-        } catch (e) {
-          console.error("Failed to parse guest address", e);
-        }
-      }
-    }
+    const savedAddress = getSavedAddress();
+    setFormData(savedAddress);
+  }, []);
 
-    if (savedAddress) {
-      setFullName(savedAddress.fullName);
-      setPhone(savedAddress.phone);
-      setStreet(savedAddress.street);
-      setApartment(savedAddress.apartment || '');
-      setCity(savedAddress.city);
-      setState(savedAddress.state);
-      setPincode(savedAddress.pincode);
-      setSelectedAddressId(savedAddress.id);
-    }
-  }, [user]);
+  const updateFormData = (field: keyof AddressFormState, value: string) => {
+    const newFormData = { ...formData, [field]: value };
+    setFormData(newFormData);
+    localStorage.setItem('baagfresh_saved_address', JSON.stringify(newFormData));
+  };
 
   // Shipping Method
   const [deliverySpeed, setDeliverySpeed] = useState<'standard' | 'express'>('standard');
@@ -94,21 +101,27 @@ export const CheckoutModal: React.FC = () => {
 
   const handleSelectSavedAddress = (addr: Address) => {
     setSelectedAddressId(addr.id);
-    setFullName(addr.fullName);
-    setPhone(addr.phone);
-    setStreet(addr.street);
-    setApartment(addr.apartment || '');
-    setCity(addr.city);
-    setState(addr.state);
-    setPincode(addr.pincode);
+    const newFormData = {
+      fullName: addr.fullName,
+      phone: addr.phone,
+      email: user?.email || '',
+      street: addr.street,
+      apartment: addr.apartment || '',
+      city: addr.city,
+      state: addr.state,
+      pincode: addr.pincode,
+    };
+    setFormData(newFormData);
+    localStorage.setItem('baagfresh_saved_address', JSON.stringify(newFormData));
   };
 
   const handleDetailsSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName || !phone || !street || !city || !pincode) {
+    if (!formData.fullName || !formData.phone || !formData.street || !formData.city || !formData.pincode) {
       alert('Please fill all required delivery address fields.');
       return;
     }
+    localStorage.setItem('baagfresh_saved_address', JSON.stringify(formData));
     setStep('payment');
   };
 
@@ -123,13 +136,7 @@ export const CheckoutModal: React.FC = () => {
     const shippingAddress: Address = {
       id: selectedAddressId === 'custom' ? `addr-${Date.now()}` : selectedAddressId,
       type: 'Home',
-      fullName,
-      phone,
-      street,
-      apartment,
-      city,
-      state,
-      pincode,
+      ...formData,
       isDefault: false,
     };
 
@@ -304,8 +311,8 @@ export const CheckoutModal: React.FC = () => {
                     <input
                       type="text"
                       required
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
+                      value={formData.fullName}
+                      onChange={(e) => updateFormData('fullName', e.target.value)}
                       placeholder="Receiver's full name"
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-[#162f22] text-slate-900 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-[#275943] focus:ring-1 focus:ring-[#c79a1f] focus:outline-none"
                     />
@@ -317,8 +324,8 @@ export const CheckoutModal: React.FC = () => {
                     <input
                       type="tel"
                       required
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      value={formData.phone}
+                      onChange={(e) => updateFormData('phone', e.target.value)}
                       placeholder="+91 98765 43210"
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-[#162f22] text-slate-900 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-[#275943] focus:ring-1 focus:ring-[#c79a1f] focus:outline-none"
                     />
@@ -332,8 +339,8 @@ export const CheckoutModal: React.FC = () => {
                   <input
                     type="email"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={formData.email}
+                    onChange={(e) => updateFormData('email', e.target.value)}
                     placeholder="name@example.com"
                     className="w-full px-3.5 py-2.5 bg-white dark:bg-[#162f22] text-slate-900 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-[#275943] focus:ring-1 focus:ring-[#c79a1f] focus:outline-none"
                   />
@@ -347,8 +354,8 @@ export const CheckoutModal: React.FC = () => {
                     <input
                       type="text"
                       required
-                      value={street}
-                      onChange={(e) => setStreet(e.target.value)}
+                      value={formData.street}
+                      onChange={(e) => updateFormData('street', e.target.value)}
                       placeholder="Street, Landmark, Area"
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-[#162f22] text-slate-900 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-[#275943] focus:ring-1 focus:ring-[#c79a1f] focus:outline-none"
                     />
@@ -359,8 +366,8 @@ export const CheckoutModal: React.FC = () => {
                     </label>
                     <input
                       type="text"
-                      value={apartment}
-                      onChange={(e) => setApartment(e.target.value)}
+                      value={formData.apartment}
+                      onChange={(e) => updateFormData('apartment', e.target.value)}
                       placeholder="Flat 4B, Tower 2"
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-[#162f22] text-slate-900 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-[#275943] focus:ring-1 focus:ring-[#c79a1f] focus:outline-none"
                     />
@@ -375,8 +382,8 @@ export const CheckoutModal: React.FC = () => {
                     <input
                       type="text"
                       required
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
+                      value={formData.city}
+                      onChange={(e) => updateFormData('city', e.target.value)}
                       placeholder="Varanasi"
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-[#162f22] text-slate-900 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-[#275943] focus:ring-1 focus:ring-[#c79a1f] focus:outline-none"
                     />
@@ -388,8 +395,8 @@ export const CheckoutModal: React.FC = () => {
                     <input
                       type="text"
                       required
-                      value={state}
-                      onChange={(e) => setState(e.target.value)}
+                      value={formData.state}
+                      onChange={(e) => updateFormData('state', e.target.value)}
                       placeholder="Uttar Pradesh"
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-[#162f22] text-slate-900 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-[#275943] focus:ring-1 focus:ring-[#c79a1f] focus:outline-none"
                     />
@@ -402,8 +409,8 @@ export const CheckoutModal: React.FC = () => {
                       type="text"
                       required
                       maxLength={6}
-                      value={pincode}
-                      onChange={(e) => setPincode(e.target.value)}
+                      value={formData.pincode}
+                      onChange={(e) => updateFormData('pincode', e.target.value)}
                       placeholder="221005"
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-[#162f22] text-slate-900 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-[#275943] focus:ring-1 focus:ring-[#c79a1f] focus:outline-none"
                     />
@@ -482,9 +489,9 @@ export const CheckoutModal: React.FC = () => {
           {step === 'payment' && (
             <PaymentGateway
               amount={finalTotal}
-              receiverPhone={phone}
-              receiverCity={city}
-              receiverPincode={pincode}
+              receiverPhone={formData.phone}
+              receiverCity={formData.city}
+              receiverPincode={formData.pincode}
               onPaymentSuccess={handlePaymentSuccess}
               onCancel={() => setStep('details')}
             />

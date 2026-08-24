@@ -153,7 +153,7 @@ export const Header: React.FC = () => {
   return (
     <header className="sticky top-0 z-40 w-full shadow-sm">
       {/* Top Announcement Bar */}
-      <div className="bg-[#012d1d] text-[#FAF3E0] text-xs py-2 px-4 border-b border-[#1b4332] transition-colors duration-300">
+      <div className="hidden md:flex bg-[#012d1d] text-[#FAF3E0] text-xs py-2 px-4 border-b border-[#1b4332] transition-colors duration-300">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2">
           {/* Left contact info */}
           <div className="flex items-center gap-4 flex-wrap justify-center sm:justify-start">
@@ -578,7 +578,7 @@ export const Header: React.FC = () => {
                 onClick={() => {
                   setIsProfileOpen(true);
                 }}
-                className="relative p-1.5 sm:p-2 text-[#012d1d] dark:text-[#FAF3E0] hover:bg-[#ece2c9] dark:hover:bg-[#162f22] rounded-full transition-colors"
+                className="hidden md:flex relative p-1.5 sm:p-2 text-[#012d1d] dark:text-[#FAF3E0] hover:bg-[#ece2c9] dark:hover:bg-[#162f22] rounded-full transition-colors"
                 title="Wishlist"
                 aria-label="Wishlist"
               >
@@ -594,7 +594,7 @@ export const Header: React.FC = () => {
               <button
                 id="header-notifications-btn"
                 onClick={() => setIsNotificationsOpen(true)}
-                className="relative p-1.5 sm:p-2 text-[#012d1d] dark:text-[#FAF3E0] hover:bg-[#ece2c9] dark:hover:bg-[#162f22] rounded-full transition-colors"
+                className="hidden md:flex relative p-1.5 sm:p-2 text-[#012d1d] dark:text-[#FAF3E0] hover:bg-[#ece2c9] dark:hover:bg-[#162f22] rounded-full transition-colors"
                 title="Notifications"
                 aria-label="Notifications"
               >
@@ -610,25 +610,14 @@ export const Header: React.FC = () => {
               <button
                 id="header-gmail-hub-btn"
                 onClick={() => setIsGmailHubOpen(true)}
-                className="relative p-1.5 sm:p-2 text-[#012d1d] dark:text-[#FAF3E0] hover:bg-[#ece2c9] dark:hover:bg-[#162f22] rounded-full transition-colors"
+                className="hidden md:flex relative p-1.5 sm:p-2 text-[#012d1d] dark:text-[#FAF3E0] hover:bg-[#ece2c9] dark:hover:bg-[#162f22] rounded-full transition-colors"
                 title="Gmail Hub & Order Receipts"
                 aria-label="Gmail Hub"
               >
                 <Mail className="w-4 h-4 text-[#c79a1f]" />
               </button>
 
-              {/* Gemini AI Sommelier Chatbot Button */}
-              <button
-                id="header-ai-sommelier-btn"
-                onClick={() => setIsChatbotOpen(true)}
-                className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-[#012d1d] to-[#1b4332] text-[#fed65b] border border-[#fed65b]/50 hover:border-[#fed65b] rounded-full transition-all text-[11px] font-bold shadow-xs hover:scale-105 cursor-pointer"
-                title="Ask BaagFresh Gemini AI Sommelier"
-                aria-label="AI Sommelier"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-[#fed65b] animate-pulse" />
-                <span className="hidden sm:inline">AI Sommelier</span>
-              </button>
-
+              
               {/* Account / Profile / Auth */}
               {user && user.id !== 'usr-guest-00' && user.email ? (
                 <button
@@ -864,7 +853,31 @@ export const Header: React.FC = () => {
                 </button>
               </div>
 
-              <div className="py-4 space-y-2">
+              <div className="py-4 space-y-2 border-b border-[#d6caba] dark:border-[#275943]">
+                  <div className="text-xs uppercase font-bold tracking-wider text-[#635336] dark:text-[#fed65b] mb-2 px-3">
+                    Your Account
+                  </div>
+                  <button
+                    onClick={() => { setIsMobileMenuOpen(false); setIsProfileOpen(true); }}
+                    className="w-full text-left py-2.5 px-3 rounded-lg text-sm font-semibold text-[#012d1d] dark:text-[#FAF3E0] hover:bg-[#ece2c9] dark:hover:bg-[#162f22] flex items-center gap-2"
+                  >
+                    <Heart className="w-4 h-4" /> Wishlist
+                  </button>
+                  <button
+                    onClick={() => { setIsMobileMenuOpen(false); setIsNotificationsOpen(true); }}
+                    className="w-full text-left py-2.5 px-3 rounded-lg text-sm font-semibold text-[#012d1d] dark:text-[#FAF3E0] hover:bg-[#ece2c9] dark:hover:bg-[#162f22] flex items-center gap-2"
+                  >
+                    <Bell className="w-4 h-4" /> Notifications
+                  </button>
+                  <button
+                    onClick={() => { setIsMobileMenuOpen(false); setIsGmailHubOpen(true); }}
+                    className="w-full text-left py-2.5 px-3 rounded-lg text-sm font-semibold text-[#012d1d] dark:text-[#FAF3E0] hover:bg-[#ece2c9] dark:hover:bg-[#162f22] flex items-center gap-2"
+                  >
+                    <Mail className="w-4 h-4" /> Gmail Hub
+                  </button>
+                </div>
+
+                <div className="py-4 space-y-2">
                 <div className="text-xs uppercase font-bold tracking-wider text-[#635336] dark:text-[#fed65b] mb-2">
                   Browse Harvest
                 </div>

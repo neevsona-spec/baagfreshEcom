@@ -333,7 +333,7 @@ export const GeminiChatbot: React.FC = () => {
     <>
       {/* Floating Trigger Button */}
       {!isChatbotOpen && (
-        <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 animate-bounce-subtle">
+        <div className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end gap-2 animate-bounce-subtle">
           {hasUnread && (
             <div className="bg-[#012d1d] text-[#fed65b] border border-[#fed65b] px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse">
               1 New Recommendation!

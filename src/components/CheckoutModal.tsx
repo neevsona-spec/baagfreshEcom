@@ -32,6 +32,7 @@ export const CheckoutModal: React.FC = () => {
     currency,
     formatPrice,
     user,
+    updateUserAddresses,
     createOrder,
     setTrackingOrder,
     openGmailInvoice,
@@ -39,23 +40,46 @@ export const CheckoutModal: React.FC = () => {
   } = useApp();
 
   const [step, setStep] = useState<'details' | 'payment' | 'success'>('details');
+  const [isAddingNewAddress, setIsAddingNewAddress] = useState(false);
 
   // Address fields
-  const [selectedAddressId, setSelectedAddressId] = useState<string>(
-    user?.addresses[0]?.id || 'custom'
-  );
-  const [fullName, setFullName] = useState<string>(user?.name || '');
-  const [phone, setPhone] = useState<string>(user?.phone || '');
-  const [email, setEmail] = useState<string>(user?.email || '');
-  const [street, setStreet] = useState<string>(
-    user?.addresses[0]?.street || '42 Assi Ghat Road'
-  );
-  const [apartment, setApartment] = useState<string>(
-    user?.addresses[0]?.apartment || 'House 4B'
-  );
-  const [city, setCity] = useState<string>(user?.addresses[0]?.city || 'Varanasi');
-  const [state, setState] = useState<string>(user?.addresses[0]?.state || 'Uttar Pradesh');
-  const [pincode, setPincode] = useState<string>(user?.addresses[0]?.pincode || '221005');
+  const [selectedAddressId, setSelectedAddressId] = useState<string>('custom');
+  const [fullName, setFullName] = useState<string>('');
+  const [phone, setPhone] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+  const [street, setStreet] = useState<string>('');
+  const [apartment, setApartment] = useState<string>('');
+  const [city, setCity] = useState<string>('');
+  const [state, setState] = useState<string>('');
+  const [pincode, setPincode] = useState<string>('');
+
+  // Load saved address on mount
+  React.useEffect(() => {
+    let savedAddress: Address | null = null;
+    if (user) {
+      savedAddress = user.addresses.find(a => a.isDefault) || user.addresses[0] || null;
+    } else {
+      const guestAddress = localStorage.getItem('baagfresh_guest_address');
+      if (guestAddress) {
+        try {
+          savedAddress = JSON.parse(guestAddress);
+        } catch (e) {
+          console.error("Failed to parse guest address", e);
+        }
+      }
+    }
+
+    if (savedAddress) {
+      setFullName(savedAddress.fullName);
+      setPhone(savedAddress.phone);
+      setStreet(savedAddress.street);
+      setApartment(savedAddress.apartment || '');
+      setCity(savedAddress.city);
+      setState(savedAddress.state);
+      setPincode(savedAddress.pincode);
+      setSelectedAddressId(savedAddress.id);
+    }
+  }, [user]);
 
   // Shipping Method
   const [deliverySpeed, setDeliverySpeed] = useState<'standard' | 'express'>('standard');
@@ -108,6 +132,16 @@ export const CheckoutModal: React.FC = () => {
       pincode,
       isDefault: false,
     };
+
+    // Save Address
+    if (user) {
+      // Add or Update address
+      const newAddresses = user.addresses.filter(a => a.id !== shippingAddress.id);
+      newAddresses.push(shippingAddress);
+      await updateUserAddresses(newAddresses);
+    } else {
+      localStorage.setItem('baagfresh_guest_address', JSON.stringify(shippingAddress));
+    }
 
     const newOrder = await createOrder({
       items: [...cart],
@@ -199,11 +233,20 @@ export const CheckoutModal: React.FC = () => {
           {step === 'details' && (
             <form onSubmit={handleDetailsSubmit} className="space-y-5">
               {/* Saved Address Selector */}
-              {user && user.addresses.length > 0 && (
+              {user && user.addresses.length > 0 && !isAddingNewAddress ? (
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
-                    Select Delivery Address:
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                      Select Delivery Address:
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingNewAddress(true)}
+                      className="text-xs font-bold text-[#c79a1f] hover:underline"
+                    >
+                      + Add New Address
+                    </button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {user.addresses.map((addr) => (
                       <div
@@ -236,10 +279,23 @@ export const CheckoutModal: React.FC = () => {
                     ))}
                   </div>
                 </div>
-              )}
-
-              {/* Address Form */}
-              <div className="space-y-3 pt-2 text-xs">
+              ) : (
+                <div className="space-y-3 pt-2 text-xs">
+                  {/* Address Form */}
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                      Delivery Details
+                    </label>
+                    {user && user.addresses.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingNewAddress(false)}
+                        className="text-xs font-bold text-[#c79a1f] hover:underline"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -353,9 +409,9 @@ export const CheckoutModal: React.FC = () => {
                     />
                   </div>
                 </div>
-              </div>
-
-              {/* Delivery Speed Selection */}
+                </div>
+              )
+            }
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
                   Delivery Speed:

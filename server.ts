@@ -390,13 +390,28 @@ app.get("/api/admin/stats", verifyAdminAuthorization, (_req, res) => {
 // Multi-turn Chat API Endpoint
 app.post("/api/chat", async (req, res) => {
   try {
-    const { messages, role = "sommelier", model = "gemini-3.5-flash" } = req.body;
+    const { messages, role = "sommelier", model = "gemini-3.5-flash", userContext } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "Messages array is required." });
     }
 
     const ai = getGenAI();
+
+    // Context preparation
+    let contextStr = "";
+    if (userContext) {
+      const { user, cart, orders } = userContext;
+      contextStr = `\n\nUSER CONTEXT:\n- Logged-in: ${user ? "Yes (" + user.name + ")" : "No (Guest)"}\n`;
+      if (user) {
+        contextStr += `- Current Cart: ${cart?.length || 0} items\n`;
+        if (orders && orders.length > 0) {
+          contextStr += `- Past Orders:\n${orders.map((o: any) => `- ID: ${o.id}, Status: ${o.status}, Total: ${o.total}, Tracking: ${o.trackingRef || "N/A"}`).join("\n")}\n`;
+        } else {
+          contextStr += "- Past Orders: None\n";
+        }
+      }
+    }
 
     // Check if API key is provided
     if (!ai) {
@@ -429,7 +444,7 @@ app.post("/api/chat", async (req, res) => {
       roleModifier = "\nEmphasis: Focus specifically on authentic culinary recipes, spice pairings, biryani/kheer preparation, saffron infusion secrets, and proper airtight storage methods.";
     }
 
-    const fullSystemInstruction = `${SYSTEM_INSTRUCTION}\n${roleModifier}`;
+    const fullSystemInstruction = `${SYSTEM_INSTRUCTION}\n${roleModifier}${contextStr}\n\nRULES FOR ORDER INQUIRIES:\n1. If user asks about order status, analyze their pastOrders from USER CONTEXT.\n2. If user is a guest, ask them to Sign In.\n3. If user is logged in and has orders, state order details clearly and include [BUTTON:track-order:ORDER_ID].\n4. If user is logged in but has no orders, inform them politely and suggest shopping.`;
 
     // Transform conversation history into Gemini format
     // Map previous turns: user -> user, assistant -> model

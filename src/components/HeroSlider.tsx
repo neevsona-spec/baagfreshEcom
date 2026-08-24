@@ -202,6 +202,7 @@ export const HeroSlider: React.FC = () => {
     products, 
     setQuickViewProduct, 
     addToCart,
+    setIsCartOpen,
     formatPrice 
   } = useApp();
 
@@ -281,7 +282,8 @@ export const HeroSlider: React.FC = () => {
   };
 
   return (
-    <div id="hero-showcase-container" className="relative w-full overflow-hidden bg-[#012d1d] text-[#FAF3E0]">
+    <>
+      <div id="hero-showcase-container" className="relative w-full overflow-hidden bg-[#012d1d] text-[#FAF3E0]">
       {/* Background Ambience Layer with Dynamic Gradient */}
       <div className="absolute inset-0 pointer-events-none opacity-40 mix-blend-soft-light transition-all duration-1000">
         <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#fed65b] rounded-full blur-3xl opacity-20 animate-pulse" />
@@ -362,7 +364,7 @@ export const HeroSlider: React.FC = () => {
                   <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm text-[#fed65b] text-[10px] px-2 py-1 rounded-full font-bold">{activeItem.origin}</div>
                 </div>
                 <div className="p-4 space-y-3">
-                  <div>
+                  <div onClick={(e) => { e.stopPropagation(); const p = products.find(prod => prod.id === activeItem.id); if(p) { addToCart(p); setIsCartOpen(true); } }} className="cursor-pointer">
                     <h2 className="text-lg font-cinzel font-bold text-white leading-tight">{activeItem.name}</h2>
                     <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
                       <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
@@ -371,15 +373,9 @@ export const HeroSlider: React.FC = () => {
                     </div>
                   </div>
                   <p className="text-xs text-slate-300 line-clamp-1">{activeItem.highlight}</p>
-                  <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="pt-2">
                     <button 
-                      onClick={(e) => { e.stopPropagation(); handleQuickView(activeItem.id); }}
-                      className="relative z-30 pointer-events-auto cursor-pointer w-full py-2.5 rounded-xl bg-white/10 text-white font-bold text-xs"
-                    >
-                      Quick View
-                    </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleDirectAddToCart(activeItem.id); }}
+                      onClick={(e) => { e.stopPropagation(); const p = products.find(prod => prod.id === activeItem.id); if(p) { addToCart(p); setIsCartOpen(true); } }}
                       className="relative z-30 pointer-events-auto cursor-pointer w-full py-2.5 rounded-xl bg-[#fed65b] text-[#012d1d] font-bold text-xs"
                     >
                       Add to Cart
@@ -399,78 +395,67 @@ export const HeroSlider: React.FC = () => {
           {/* Desktop Showcase Layout (Hidden on Mobile) */}
           <div className="hidden lg:grid grid-cols-12 gap-10 items-center">
             
-            {/* Left Column: Brand Story & Live Slide Information */}
-            <div className="col-span-5 space-y-6">
-              
-              {/* Active Tag & Origin Pill */}
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#fed65b]/15 border border-[#fed65b]/35 text-[#fed65b] text-xs font-semibold tracking-wide backdrop-blur-sm">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>{activeItem.categoryLabel}</span>
-                <span className="text-white/40">•</span>
-                <span className="text-white/90">{activeItem.tag}</span>
-              </div>
-
-              {/* Main Dynamic Heading */}
-              <div className="space-y-1.5">
-                <div className="text-xs font-semibold text-[#fed65b]/90 uppercase tracking-wider font-cinzel">
-                  {activeItem.hindiName}
-                </div>
-                <h1 className="font-cinzel text-5xl font-bold text-white leading-tight tracking-tight drop-shadow-sm">
-                  {activeItem.name}
-                </h1>
-              </div>
-
-              {/* Badge Highlight Card */}
-              <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md space-y-2">
-                <div className="flex items-center justify-between text-xs text-[#fed65b] font-bold">
-                  <span className="flex items-center gap-1.5">
-                    <Award className="w-4 h-4 text-[#fed65b]" />
-                    {activeItem.badge}
-                  </span>
-                  <span className="flex items-center gap-1 text-amber-300">
-                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                    {activeItem.rating} ({activeItem.reviewsCount})
-                  </span>
-                </div>
-                <p className="text-sm text-[#e6deca] leading-relaxed font-normal">
-                  {activeItem.highlight}
-                </p>
-                <div className="flex items-center gap-2 text-[11px] text-[#c9bfa8] pt-1">
-                  <Flame className="w-3.5 h-3.5 text-[#fed65b]" />
-                  <span><strong>Aroma & Flavor:</strong> {activeItem.aromaProfile}</span>
-                </div>
-              </div>
-
-              {/* Price & Primary Call to Actions */}
-              <div className="flex items-center gap-6 pt-2">
-                <div>
-                  <div className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
-                    Standard Pack ({activeItem.weight})
+                <div onClick={(e) => { e.stopPropagation(); const p = products.find(prod => prod.id === activeItem.id); if(p) { addToCart(p); setIsCartOpen(true); } }} className="cursor-pointer">
+                  {/* Active Tag & Origin Pill */}
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#fed65b]/15 border border-[#fed65b]/35 text-[#fed65b] text-xs font-semibold tracking-wide backdrop-blur-sm">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{activeItem.categoryLabel}</span>
+                    <span className="text-white/40">•</span>
+                    <span className="text-white/90">{activeItem.tag}</span>
                   </div>
-                  <div className="font-cinzel text-3xl font-bold text-[#fed65b]">
-                    {formatPrice(activeItem.price)}
+
+                  {/* Main Dynamic Heading */}
+                  <div className="space-y-1.5 mt-4">
+                    <div className="text-xs font-semibold text-[#fed65b]/90 uppercase tracking-wider font-cinzel">
+                      {activeItem.hindiName}
+                    </div>
+                    <h1 className="font-cinzel text-5xl font-bold text-white leading-tight tracking-tight drop-shadow-sm">
+                      {activeItem.name}
+                    </h1>
+                  </div>
+
+                  {/* Badge Highlight Card */}
+                  <div className="p-4 mt-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md space-y-2">
+                    <div className="flex items-center justify-between text-xs text-[#fed65b] font-bold">
+                      <span className="flex items-center gap-1.5">
+                        <Award className="w-4 h-4 text-[#fed65b]" />
+                        {activeItem.badge}
+                      </span>
+                      <span className="flex items-center gap-1 text-amber-300">
+                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                        {activeItem.rating} ({activeItem.reviewsCount})
+                      </span>
+                    </div>
+                    <p className="text-sm text-[#e6deca] leading-relaxed font-normal">
+                      {activeItem.highlight}
+                    </p>
+                    <div className="flex items-center gap-2 text-[11px] text-[#c9bfa8] pt-1">
+                      <Flame className="w-3.5 h-3.5 text-[#fed65b]" />
+                      <span><strong>Aroma & Flavor:</strong> {activeItem.aromaProfile}</span>
+                    </div>
+                  </div>
+
+                  {/* Price */}
+                  <div className="pt-6">
+                    <div className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
+                      Standard Pack ({activeItem.weight})
+                    </div>
+                    <div className="font-cinzel text-3xl font-bold text-[#fed65b]">
+                      {formatPrice(activeItem.price)}
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 flex-1">
+                {/* Primary Call to Actions */}
+                <div className="pt-2">
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleDirectAddToCart(activeItem.id); }}
-                    className="relative z-30 pointer-events-auto cursor-pointer flex-1 inline-flex items-center justify-center gap-2 bg-[#fed65b] hover:bg-[#ffe07a] text-[#012d1d] px-6 py-3.5 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all"
+                    onClick={(e) => { e.stopPropagation(); const p = products.find(prod => prod.id === activeItem.id); if(p) { addToCart(p); setIsCartOpen(true); } }}
+                    className="relative z-30 pointer-events-auto cursor-pointer flex w-full items-center justify-center gap-2 bg-[#fed65b] hover:bg-[#ffe07a] text-[#012d1d] px-6 py-3.5 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all"
                   >
                     <ShoppingBag className="w-4 h-4" />
                     <span>Add To Cart</span>
                   </button>
-
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleQuickView(activeItem.id); }}
-                    className="relative z-30 pointer-events-auto cursor-pointer inline-flex items-center justify-center gap-1.5 bg-white/10 hover:bg-white/20 text-[#FAF3E0] border border-white/25 px-5 py-3.5 rounded-xl font-semibold text-sm backdrop-blur-md transition-all"
-                    title="Interactive Quick View"
-                  >
-                    <Eye className="w-4 h-4" />
-                    <span>Quick View</span>
-                  </button>
                 </div>
-              </div>
 
               {/* Trust Assurances */}
               <div className="grid grid-cols-3 gap-2 pt-4 text-[11px] text-[#dcd1ba] border-t border-white/10">
@@ -548,14 +533,6 @@ export const HeroSlider: React.FC = () => {
                               {item.name}
                             </div>
                           </div>
-
-                          <button
-                            onClick={() => handleQuickView(item.id)}
-                            className="bg-[#fed65b] hover:bg-[#ffe07a] text-[#012d1d] p-2.5 rounded-xl shadow-lg hover:scale-105 transition-all shrink-0"
-                            title="View Full Product Details"
-                          >
-                            <ArrowRight className="w-4 h-4" />
-                          </button>
                         </div>
                       </div>
                     );
@@ -645,7 +622,6 @@ export const HeroSlider: React.FC = () => {
         </div>
       </div>
 
-
       {/* Trust Badges Bar */}
       <div className="bg-[#FAF3E0] dark:bg-[#12281d] border-b border-[#e8dfc8] dark:border-[#1e3f2e] py-4 sm:py-5 text-slate-900 dark:text-[#FAF3E0] transition-colors">
         <div className="max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
@@ -706,6 +682,6 @@ export const HeroSlider: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };

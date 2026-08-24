@@ -102,7 +102,7 @@ const STARTER_PROMPTS = [
 ];
 
 export const GeminiChatbot: React.FC = () => {
-  const { products, setQuickViewProduct, formatPrice, addToCart, showToast, isChatbotOpen, setIsChatbotOpen } = useApp();
+  const { products, setQuickViewProduct, formatPrice, addToCart, showToast, isChatbotOpen, setIsChatbotOpen, user, cart, orders } = useApp();
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
@@ -193,6 +193,7 @@ export const GeminiChatbot: React.FC = () => {
           })),
           role: activeRole,
           model: activeModel,
+          userContext: { user, cart, orders }
         }),
       });
 
@@ -296,6 +297,28 @@ export const GeminiChatbot: React.FC = () => {
         {lines.map((line, idx) => {
           if (!line.trim()) {
             return <div key={idx} className="h-1" />;
+          }
+
+          // Handle Button tags [BUTTON:type:id]
+          const buttonMatch = line.match(/\[BUTTON:([a-z-]+):([a-zA-Z0-9_-]+)\]/);
+          if (buttonMatch) {
+            const [fullMatch, type, id] = buttonMatch;
+            const label = type === 'track-order' ? 'Track Live' : 'View Order';
+            return (
+              <button
+                key={idx}
+                onClick={() => {
+                  if (type === 'track-order') {
+                    // Logic to open order modal
+                    showToast(`Opening tracking for order #${id}`, 'info');
+                  }
+                }}
+                className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#fed65b] text-[#012d1d] font-bold text-[11px] shadow-sm hover:bg-[#ffe07a] transition-all cursor-pointer"
+              >
+                {label}
+                <ExternalLink className="w-3 h-3" />
+              </button>
+            );
           }
 
           // Bullet points

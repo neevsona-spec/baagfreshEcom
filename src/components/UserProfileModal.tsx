@@ -45,7 +45,7 @@ export const UserProfileModal: React.FC = () => {
     openGmailInvoice,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'orders' | 'addresses' | 'wishlist' | 'security'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'orders' | 'addresses' | 'wishlist'>('profile');
 
   // New address form state
   const [isAddingAddress, setIsAddingAddress] = useState(false);
@@ -259,18 +259,6 @@ export const UserProfileModal: React.FC = () => {
             <Heart className="w-4 h-4" />
             <span>Wishlist ({wishlist.length})</span>
           </button>
-
-          <button
-            onClick={() => setActiveTab('security')}
-            className={`py-3 px-3 border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
-              activeTab === 'security'
-                ? 'border-[#012d1d] dark:border-[#fed65b] text-[#012d1d] dark:text-[#fed65b]'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>Security & Vault</span>
-          </button>
         </div>
 
         {/* Content Body */}
@@ -361,15 +349,6 @@ export const UserProfileModal: React.FC = () => {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => openGmailInvoice(ord)}
-                          className="px-2.5 py-1.5 bg-[#FAF3E0] hover:bg-[#fed65b]/20 dark:bg-[#11241a] text-[#854d0e] dark:text-[#fed65b] border border-amber-300 dark:border-[#275943] font-bold rounded-lg flex items-center gap-1 shadow-xs transition-colors"
-                          title="Send official HTML invoice to your Gmail"
-                        >
-                          <Mail className="w-3.5 h-3.5 text-[#c79a1f]" />
-                          <span>Email Invoice</span>
-                        </button>
-
                         <button
                           onClick={() => {
                             setIsProfileOpen(false);
@@ -589,79 +568,7 @@ export const UserProfileModal: React.FC = () => {
             </div>
           )}
 
-          {/* TAB 5: Security & Vault */}
-          {activeTab === 'security' && (
-            <div className="max-w-xl mx-auto space-y-4">
-              {/* E2E Encryption Status */}
-              <div className="p-4 bg-emerald-50 dark:bg-[#162f22] rounded-2xl border border-emerald-200 dark:border-[#275943] space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 font-bold text-emerald-900 dark:text-emerald-300">
-                    <Key className="w-5 h-5" />
-                    <span>AES-256 Cloud Vault Active</span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
-                    ENCRYPTED
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                  Your address details and transaction history are encrypted client-side with zero-knowledge vault protection.
-                </p>
-                <div className="text-[10px] font-mono text-slate-500 bg-white/70 dark:bg-[#0f241a] p-2 rounded-lg break-all">
-                  Vault Key Fingerprint: {user.e2eEncryptionKeyFingerprint}
-                </div>
-              </div>
-
-              {/* 2FA Toggle */}
-              <div className="p-4 bg-slate-50 dark:bg-[#162f22] rounded-2xl border border-slate-200 dark:border-[#275943] flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <Smartphone className="w-4 h-4 text-[#c79a1f]" />
-                    <span>Two-Factor Authentication (2FA)</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Requires instant OTP authorization for new logins & order dispatches.
-                  </p>
-                </div>
-                <button
-                  onClick={handleToggle2FA}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${
-                    user.is2FAEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
-                >
-                  <div
-                    className={`w-4 h-4 rounded-full bg-white transition-transform transform absolute top-1 ${
-                      user.is2FAEnabled ? 'left-7' : 'left-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Multi-device Cloud Sync Toggle */}
-              <div className="p-4 bg-slate-50 dark:bg-[#162f22] rounded-2xl border border-slate-200 dark:border-[#275943] flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-[#c79a1f]" />
-                    <span>Multi-Device Cloud Synchronization</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Sync your shopping basket and wishlist seamlessly across mobile and desktop.
-                  </p>
-                </div>
-                <button
-                  onClick={handleToggleCloudSync}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${
-                    user.cloudSyncEnabled ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
-                >
-                  <div
-                    className={`w-4 h-4 rounded-full bg-white transition-transform transform absolute top-1 ${
-                      user.cloudSyncEnabled ? 'left-7' : 'left-1'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-          )}
+          
         </div>
       </div>
     </div>

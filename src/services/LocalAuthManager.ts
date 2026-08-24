@@ -24,8 +24,8 @@ export interface AuthResponse {
 }
 
 const STORAGE_KEYS = {
-  ACCOUNTS: 'baagfresh_customer_accounts',
-  SESSION: 'baagfresh_customer_session',
+  ACCOUNTS: 'baagfresh_users',
+  SESSION: 'baagfresh_current_user',
   SETTINGS: 'baagfresh_customer_settings',
 };
 

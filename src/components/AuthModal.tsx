@@ -54,30 +54,38 @@ export const AuthModal: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    // Completely bypass Firebase Auth - use LocalStorage only
+    // Registry-based local sign-up/in
+    const users: any[] = JSON.parse(localStorage.getItem('baagfresh_users') || '[]');
+
     if (mode === 'signup') {
       const newUser = { 
         name: cleanName, 
-        email: cleanContact, 
-        phone: '',
-        id: Date.now().toString(),
+        emailOrPhone: cleanContact, 
+        pin: cleanPass,
+        id: Date.now(),
+        avatar: '',
         memberSince: new Date().toLocaleDateString(),
         addresses: [],
-        avatar: '',
         is2FAEnabled: false,
         e2eEncryptionKeyFingerprint: '',
         cloudSyncEnabled: false
       };
       
-      localStorage.setItem('currentUser', JSON.stringify(newUser));
+      users.push(newUser);
+      localStorage.setItem('baagfresh_users', JSON.stringify(users));
+      localStorage.setItem('baagfresh_current_user', JSON.stringify(newUser));
       setUser(newUser);
       showToast('Account created successfully!', 'success');
       setIsAuthOpen(false);
     } else {
-      // Simple local sign in logic
-      const savedUser = localStorage.getItem('currentUser');
-      if (savedUser) {
-        setUser(JSON.parse(savedUser));
+      // Sign In verification
+      const foundUser = users.find(
+        (u: any) => u.emailOrPhone === cleanContact
+      );
+
+      if (foundUser) {
+        localStorage.setItem('baagfresh_current_user', JSON.stringify(foundUser));
+        setUser(foundUser);
         showToast('Signed in successfully!', 'success');
         setIsAuthOpen(false);
       } else {
@@ -88,7 +96,7 @@ export const AuthModal: React.FC = () => {
   };
 
   const handleSignOut = () => {
-    localStorage.removeItem('currentUser');
+    localStorage.removeItem('baagfresh_current_user');
     setUser(null);
     showToast('Signed out successfully', 'info');
     setIsAuthOpen(false);

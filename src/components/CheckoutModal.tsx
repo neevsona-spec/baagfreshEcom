@@ -515,26 +515,6 @@ export const CheckoutModal: React.FC = () => {
 
                 <button
                   onClick={() => {
-                    openGmailInvoice(completedOrder);
-                  }}
-                  className="px-5 py-3 rounded-xl bg-amber-50 dark:bg-[#162f22] border border-amber-300 dark:border-[#275943] text-xs sm:text-sm font-bold text-[#854d0e] dark:text-[#fed65b] flex items-center gap-2 hover:bg-amber-100 dark:hover:bg-[#1f4331] shadow-xs"
-                >
-                  <Mail className="w-4 h-4 text-[#c79a1f]" />
-                  <span>Email Invoice via Gmail</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    window.print();
-                  }}
-                  className="px-5 py-3 rounded-xl border border-slate-300 dark:border-[#275943] text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-[#162f22]"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Print Receipt</span>
-                </button>
-
-                <button
-                  onClick={() => {
                     setIsCheckoutOpen(false);
                   }}
                   className="px-5 py-3 rounded-xl bg-[#fed65b] hover:bg-[#ffe07a] text-[#012d1d] font-bold text-xs sm:text-sm shadow-md"

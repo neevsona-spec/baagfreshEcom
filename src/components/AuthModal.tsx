@@ -38,7 +38,7 @@ export const AuthModal: React.FC = () => {
 
   const handleCustomerAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanContact = emailOrPhone.trim();
+    const cleanContact = emailOrPhone.trim().toLowerCase();
     const cleanName = name.trim();
     const cleanPass = password.trim();
 
@@ -55,45 +55,49 @@ export const AuthModal: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    // Registry-based local sign-up/in
-    const users: any[] = JSON.parse(localStorage.getItem('baagfresh_users') || '[]');
+    try {
+      const users: UserProfile[] = JSON.parse(localStorage.getItem('baagfresh_users') || '[]');
 
-    if (mode === 'signup') {
-      const newUser: UserProfile = { 
-        id: Date.now().toString(),
-        name: cleanName, 
-        email: cleanContact, 
-        phone: '', // Placeholder
-        avatar: '',
-        memberSince: new Date().toLocaleDateString(),
-        addresses: [],
-        is2FAEnabled: false,
-        e2eEncryptionKeyFingerprint: '',
-        cloudSyncEnabled: false,
-        pin: cleanPass
-      };
-      
-      users.push(newUser);
-      localStorage.setItem('baagfresh_users', JSON.stringify(users));
-      localStorage.setItem('baagfresh_current_user', JSON.stringify(newUser));
-      setUser(newUser);
-      showToast('Account created successfully!', 'success');
-      setIsAuthOpen(false);
-    } else {
-      // Sign In verification
-      const foundUser = users.find(
-        (u: any) => u.emailOrPhone === cleanContact
-      );
-
-      if (foundUser) {
-        localStorage.setItem('baagfresh_current_user', JSON.stringify(foundUser));
-        setUser(foundUser);
-        showToast('Signed in successfully!', 'success');
+      if (mode === 'signup') {
+        const newUser: UserProfile = { 
+          id: Date.now().toString(),
+          name: cleanName, 
+          email: cleanContact, 
+          phone: '',
+          avatar: '',
+          memberSince: new Date().toLocaleDateString(),
+          addresses: [],
+          is2FAEnabled: false,
+          e2eEncryptionKeyFingerprint: '',
+          cloudSyncEnabled: false,
+          pin: cleanPass
+        };
+        
+        users.push(newUser);
+        localStorage.setItem('baagfresh_users', JSON.stringify(users));
+        localStorage.setItem('baagfresh_active_user', JSON.stringify(newUser));
+        
+        setUser(newUser);
+        showToast('Account created successfully!', 'success');
         setIsAuthOpen(false);
       } else {
-        setError('No account found. Please sign up first.');
-        setLoading(false);
+        const foundUser = users.find(
+          (u) => u.email === cleanContact
+        );
+
+        if (foundUser) {
+          localStorage.setItem('baagfresh_active_user', JSON.stringify(foundUser));
+          setUser(foundUser);
+          showToast('Signed in successfully!', 'success');
+          setIsAuthOpen(false);
+        } else {
+          setError('No account found. Please sign up first.');
+        }
       }
+    } catch (e) {
+      setError('An error occurred during authentication.');
+    } finally {
+      setLoading(false);
     }
   };
 

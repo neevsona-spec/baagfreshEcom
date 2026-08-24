@@ -994,24 +994,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   ]);
 
-  // Initialize user from LocalAuthManager
+  // Initialize user from Local Storage
   useEffect(() => {
-      const localCustomer = LocalAuthManager.getCurrentUser();
-      if (localCustomer) {
-        setUser(localCustomer);
-      } else {
+    const savedUser = localStorage.getItem('baagfresh_active_user');
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        console.error('Failed to parse active user:', e);
         setUser(null);
       }
-      setAuthLoading(false);
+    } else {
+      setUser(null);
+    }
+    setAuthLoading(false);
   }, []);
 
   const signOutUser = async () => {
-    LocalAuthManager.clearSession();
+    localStorage.removeItem('baagfresh_active_user');
     setIsAdminUser(false);
     handleSetAdminAuth(false);
     setUser(null);
     showToast('Signed out of account', 'info');
   };
+
 
   const updateUserAddresses = async (addresses: Address[]) => {
     if (!user) return;

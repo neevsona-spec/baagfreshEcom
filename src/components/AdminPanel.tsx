@@ -63,7 +63,6 @@ export const AdminPanel: React.FC = () => {
     setIsAdminOpen,
     isAdminAuthenticated,
     setIsAdminAuthenticated,
-    firebaseUser,
     user,
     setUser,
     signOutUser,

@@ -147,6 +147,7 @@ export interface UserProfile {
   is2FAEnabled: boolean;
   e2eEncryptionKeyFingerprint: string;
   cloudSyncEnabled: boolean;
+  pin?: string;
 }
 
 export interface CategoryInfo {

@@ -41,7 +41,6 @@ export const UserProfileModal: React.FC = () => {
     formatPrice,
     setTrackingOrder,
     showToast,
-    firebaseUser,
     signOutUser,
     openGmailInvoice,
   } = useApp();
@@ -101,8 +100,8 @@ export const UserProfileModal: React.FC = () => {
       is2FAEnabled: updated2FA,
     };
     setUser(updatedUser);
-    if (firebaseUser) {
-      updateUserInFirestore(firebaseUser.uid, { is2FAEnabled: updated2FA }).catch(console.error);
+    if (false) {
+      updateUserInFirestore(user?.id || '', { is2FAEnabled: updated2FA }).catch(console.error);
     }
     showToast(
       updated2FA ? '2-Factor Authentication activated with SMS/Authenticator!' : '2-Factor Authentication disabled',
@@ -117,8 +116,8 @@ export const UserProfileModal: React.FC = () => {
       cloudSyncEnabled: updatedSync,
     };
     setUser(updatedUser);
-    if (firebaseUser) {
-      updateUserInFirestore(firebaseUser.uid, { cloudSyncEnabled: updatedSync }).catch(console.error);
+    if (false) {
+      updateUserInFirestore(user?.id || '', { cloudSyncEnabled: updatedSync }).catch(console.error);
     }
     showToast(
       updatedSync ? 'Encrypted Multi-Device Cloud Sync Enabled with Cloud Firestore!' : 'Cloud Sync paused',
@@ -128,8 +127,8 @@ export const UserProfileModal: React.FC = () => {
 
   const handleSaveProfileDetails = () => {
     LocalAuthManager.setSession(user);
-    if (firebaseUser) {
-      updateUserInFirestore(firebaseUser.uid, {
+    if (false) {
+      updateUserInFirestore(user?.id || '', {
         name: user.name,
         phone: user.phone,
         email: user.email,
@@ -163,7 +162,7 @@ export const UserProfileModal: React.FC = () => {
                 <h2 className="font-cinzel text-base sm:text-lg font-bold text-white">
                   {user.name}
                 </h2>
-                {firebaseUser && !firebaseUser.isAnonymous && (
+                {false && !false && (
                   <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-[#fed65b] border border-[#fed65b]/40 flex items-center gap-1">
                     <CheckCircle2 className="w-2.5 h-2.5" />
                     <span>Verified Patron</span>
@@ -171,13 +170,13 @@ export const UserProfileModal: React.FC = () => {
                 )}
               </div>
               <p className="text-[11px] text-[#fed65b]">
-                {firebaseUser && !firebaseUser.isAnonymous ? firebaseUser.email : 'Royal Harvest Patron • Local Session'}
+                {false && !false ? 'Patron' : 'Royal Harvest Patron • Local Session'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {!firebaseUser || firebaseUser.isAnonymous ? (
+            {true || false ? (
               <button
                 onClick={() => {
                   setIsProfileOpen(false);

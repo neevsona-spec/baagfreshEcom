@@ -158,7 +158,6 @@ interface AppContextType {
   openGmailInquiry: (inquiry: WholesaleInquiry) => void;
 
   // Auth & Database
-  firebaseUser: any | null;
   authLoading: boolean;
   signOutUser: () => Promise<void>;
 
@@ -188,43 +187,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const INITIAL_USER: UserProfile = {
-  id: 'usr-varanasi-01',
-  name: 'Neev Sona',
-  email: 'neevsona@gmail.com',
-  phone: '+91 87076 71319',
-  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-  memberSince: 'October 2024',
-  addresses: [
-    {
-      id: 'addr-1',
-      type: 'Home',
-      fullName: 'Neev Sona',
-      phone: '+91 87076 71319',
-      street: '42 Assi Ghat Road, Bhelupur',
-      apartment: 'House #4B, Gangotri Villa',
-      city: 'Varanasi',
-      state: 'Uttar Pradesh',
-      pincode: '221005',
-      isDefault: true,
-    },
-    {
-      id: 'addr-2',
-      type: 'Work',
-      fullName: 'Anil kumar Keshari (Central Hub)',
-      phone: '+91 87076 71319',
-      street: 'Plot 18, Ring Road IT Hub, Shivpur',
-      apartment: 'Suite 302',
-      city: 'Varanasi',
-      state: 'Uttar Pradesh',
-      pincode: '221003',
-      isDefault: false,
-    }
-  ],
-  is2FAEnabled: true,
-  e2eEncryptionKeyFingerprint: 'BF-E2E-94A8-11FE-3C2D',
-  cloudSyncEnabled: true,
-};
+// Removed INITIAL_USER definition as it contained hardcoded mock data.
 
 const INITIAL_PROMOS: PromoCodeItem[] = [
   {
@@ -849,7 +812,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [promoFlatDiscount, setPromoFlatDiscount] = useState<number>(0);
 
   // Wishlist
-  const [wishlist, setWishlist] = useState<Product[]>([PRODUCTS[2], PRODUCTS[10]]);
+  const [wishlist, setWishlist] = useState<Product[]>([]);
 
   // Automatically propagate live product changes (pricing, pack options, stock, descriptions) to active Cart
   useEffect(() => {
@@ -919,10 +882,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // User & Auth State
   const [authLoading, setAuthLoading] = useState<boolean>(false);
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    const savedCustomer = LocalAuthManager.getCurrentUser();
-    return savedCustomer || INITIAL_USER;
-  });
+  const [user, setUser] = useState<UserProfile | null>(null);
 
   // Admin User Check
   useEffect(() => {
@@ -964,7 +924,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       total: 1719.9,
       currency: 'INR',
       status: 'out_for_delivery',
-      shippingAddress: INITIAL_USER.addresses[0],
+      shippingAddress: {
+        id: 'addr-1',
+        type: 'Home',
+        fullName: 'Neev Sona',
+        phone: '+91 87076 71319',
+        street: '42 Assi Ghat Road, Bhelupur',
+        apartment: 'House #4B, Gangotri Villa',
+        city: 'Varanasi',
+        state: 'Uttar Pradesh',
+        pincode: '221005',
+        isDefault: true,
+      },
       paymentMethod: 'upi',
       paymentStatus: 'paid',
       eta: 'Today by 6:00 PM',
@@ -1029,7 +1000,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (localCustomer) {
         setUser(localCustomer);
       } else {
-        setUser(INITIAL_USER);
+        setUser(null);
       }
       setAuthLoading(false);
   }, []);
@@ -1038,7 +1009,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     LocalAuthManager.clearSession();
     setIsAdminUser(false);
     handleSetAdminAuth(false);
-    setUser(INITIAL_USER);
+    setUser(null);
     showToast('Signed out of account', 'info');
   };
 
@@ -1303,10 +1274,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]
     };
 
-    // Save to Firestore if user is authenticated
-    if (firebaseUser) {
+    // Save to Firestore if user is authenticated (Bypass Firebase for now)
+    if (false) {
       try {
-        await saveOrderToFirestore(newOrder, firebaseUser.uid);
+        await saveOrderToFirestore(newOrder, user?.id || '');
       } catch (err) {
         console.error('Failed to persist order to Firestore:', err);
       }
@@ -1329,7 +1300,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         o.id === orderId ? { ...o, status: 'confirmed' } : o
       )
     );
-    if (firebaseUser) {
+    if (false) {
       try {
         await updateOrderStatusInFirestore(orderId, 'confirmed');
       } catch (err) {
@@ -1380,7 +1351,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    if (firebaseUser) {
+    if (false) {
       try {
         await updateOrderStatusInFirestore(orderId, newStatus);
       } catch (err) {
@@ -1478,7 +1449,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setGmailHubInitialInquiry,
         openGmailInvoice,
         openGmailInquiry,
-        firebaseUser: null,
+        // firebaseUser: null, // Removed
         authLoading,
         signOutUser,
         user,

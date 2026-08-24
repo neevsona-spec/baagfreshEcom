@@ -14,6 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { UserProfile } from '../types';
 import { LocalAuthManager } from '../services/LocalAuthManager';
 
 export const AuthModal: React.FC = () => {
@@ -58,17 +59,18 @@ export const AuthModal: React.FC = () => {
     const users: any[] = JSON.parse(localStorage.getItem('baagfresh_users') || '[]');
 
     if (mode === 'signup') {
-      const newUser = { 
+      const newUser: UserProfile = { 
+        id: Date.now().toString(),
         name: cleanName, 
-        emailOrPhone: cleanContact, 
-        pin: cleanPass,
-        id: Date.now(),
+        email: cleanContact, 
+        phone: '', // Placeholder
         avatar: '',
         memberSince: new Date().toLocaleDateString(),
         addresses: [],
         is2FAEnabled: false,
         e2eEncryptionKeyFingerprint: '',
-        cloudSyncEnabled: false
+        cloudSyncEnabled: false,
+        pin: cleanPass
       };
       
       users.push(newUser);

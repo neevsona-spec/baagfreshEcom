@@ -382,6 +382,10 @@ export const getWishlistFromFirestore = async (userId: string): Promise<string[]
  * Subscribe to Product Catalog changes in real time (both master document and individual documents)
  */
 export const subscribeToProducts = (callback: (products: Product[]) => void) => {
+  if (!isFirebaseConfigured) {
+    console.warn('Firestore not configured, skipping product subscription');
+    return () => {};
+  }
   // 1. First listen to master catalog document for atomic full-catalog sync
   const unsubMaster = onSnapshot(doc(db, 'store_settings', 'catalog'), (docSnap) => {
     if (docSnap.exists()) {
@@ -550,6 +554,10 @@ export const saveStoreSettingsToFirestore = async (settings: StoreSettings): Pro
  * Subscribe to Store Settings in real time
  */
 export const subscribeToStoreSettings = (callback: (settings: StoreSettings) => void) => {
+  if (!isFirebaseConfigured) {
+    console.warn('Firestore not configured, skipping store settings subscription');
+    return () => {};
+  }
   return onSnapshot(doc(db, 'store_settings', 'global'), (docSnap) => {
     if (docSnap.exists()) {
       callback(docSnap.data() as StoreSettings);
@@ -578,6 +586,10 @@ export const savePromoCodesToFirestore = async (promos: PromoCodeItem[]): Promis
  * Subscribe to Promo Codes in real time
  */
 export const subscribeToPromoCodes = (callback: (promos: PromoCodeItem[]) => void) => {
+  if (!isFirebaseConfigured) {
+    console.warn('Firestore not configured, skipping promo codes subscription');
+    return () => {};
+  }
   return onSnapshot(doc(db, 'store_settings', 'promos'), (docSnap) => {
     if (docSnap.exists()) {
       const data = docSnap.data();
@@ -638,6 +650,10 @@ export const deleteWholesaleInquiryFromFirestore = async (id: string): Promise<v
  * Subscribe to Wholesale Inquiries in real time
  */
 export const subscribeToWholesaleInquiries = (callback: (inquiries: WholesaleInquiry[]) => void) => {
+  if (!isFirebaseConfigured) {
+    console.warn('Firestore not configured, skipping wholesale inquiries subscription');
+    return () => {};
+  }
   return onSnapshot(collection(db, 'wholesale_inquiries'), (snapshot) => {
     if (!snapshot.empty) {
       const list: WholesaleInquiry[] = [];

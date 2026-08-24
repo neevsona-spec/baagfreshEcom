@@ -657,7 +657,7 @@ export const Header: React.FC = () => {
                   aria-label="Sign In"
                 >
                   <User className="w-3.5 h-3.5 text-[#fed65b]" />
-                  <span className="hidden sm:inline">Sign In</span>
+                  <span className="hidden sm:inline">Sign In / Register</span>
                 </button>
               )}
 

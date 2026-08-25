@@ -74,6 +74,7 @@ export const AdminPanel: React.FC = () => {
     toggleProductStock,
     resetProductsToDefault,
     orders,
+    fetchOrdersFromSupabase,
     updateOrderStatus,
     promoCodes,
     addPromoCode,
@@ -1889,6 +1890,18 @@ export const AdminPanel: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={async () => {
+                          await fetchOrdersFromSupabase();
+                          showToast('Fetched live orders from Supabase database', 'success');
+                        }}
+                        className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                        title="Reload live orders from Supabase database"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Sync Supabase</span>
+                      </button>
+
                       <select
                         value={orderStatusFilter}
                         onChange={(e) => setOrderStatusFilter(e.target.value)}

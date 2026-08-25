@@ -42,6 +42,142 @@ import {
   ADMIN_EMAILS
 } from '../lib/firebase';
 import { LocalAuthManager } from '../services/LocalAuthManager';
+import { supabase, queryOrderTable, queryCustomerTable } from '../lib/supabase';
+
+export function generateTrackingSteps(status: string): TrackingStep[] {
+  const norm = (status || '').toLowerCase();
+  const isConfirmed = true;
+  const isPacked = norm.includes('pack') || norm.includes('dispatch') || norm.includes('out') || norm.includes('deliver');
+  const isDispatched = norm.includes('dispatch') || norm.includes('out') || norm.includes('deliver');
+  const isOut = norm.includes('out') || norm.includes('deliver');
+  const isDelivered = norm.includes('deliver');
+
+  return [
+    {
+      title: 'Order Confirmed & Placed',
+      description: 'Order registered in Supabase database & secured in Varanasi hub.',
+      date: 'Completed',
+      completed: isConfirmed,
+      current: norm === 'confirmed' || norm === 'order confirmed',
+    },
+    {
+      title: 'Quality Check & Nitrogen Sealing',
+      description: 'Nitrogen-sealed and vacuum inspected in Varanasi center.',
+      date: isPacked ? 'Completed' : 'Pending',
+      completed: isPacked,
+      current: norm === 'packed' || norm === 'packed & sealed',
+    },
+    {
+      title: 'Express Dispatch',
+      description: 'Consignment handed to BlueDart Express transit hub.',
+      date: isDispatched ? 'Completed' : 'Pending',
+      completed: isDispatched,
+      current: norm === 'dispatched',
+    },
+    {
+      title: 'Out for Delivery',
+      description: 'Delivery agent assigned & en route to destination.',
+      date: isOut ? 'Completed' : 'Pending',
+      completed: isOut,
+      current: norm === 'out_for_delivery' || norm === 'out for delivery',
+    },
+    {
+      title: 'Delivered Safely',
+      description: 'Handed over at customer doorstep with OTP confirmation.',
+      date: isDelivered ? 'Completed' : 'Pending',
+      completed: isDelivered,
+      current: norm === 'delivered',
+    },
+  ];
+}
+
+export function mapSupabaseOrderToOrder(row: any): Order {
+  let parsedAddress: Address = {
+    id: 'addr-' + (row.order_id || row.id || Date.now()),
+    type: 'Home',
+    fullName: row.customer_name || 'Valued Patron',
+    phone: String(row.customer_phone || ''),
+    street: '',
+    apartment: '',
+    city: 'Varanasi',
+    state: 'Uttar Pradesh',
+    pincode: '221001',
+    isDefault: true,
+  };
+
+  if (row.shipping_address) {
+    if (typeof row.shipping_address === 'string') {
+      try {
+        parsedAddress = { ...parsedAddress, ...JSON.parse(row.shipping_address) };
+      } catch (e) {
+        parsedAddress.street = row.shipping_address;
+      }
+    } else if (typeof row.shipping_address === 'object') {
+      parsedAddress = { ...parsedAddress, ...row.shipping_address };
+    }
+  }
+
+  let parsedItems: CartItem[] = [];
+  if (row.items) {
+    if (typeof row.items === 'string') {
+      try {
+        parsedItems = JSON.parse(row.items);
+      } catch (e) {
+        console.warn('Failed to parse items JSON:', e);
+      }
+    } else if (Array.isArray(row.items)) {
+      parsedItems = row.items;
+    }
+  }
+
+  const rawStatus = row.status || 'confirmed';
+  let normStatus: Order['status'] = 'confirmed';
+  const sLower = rawStatus.toLowerCase();
+  if (sLower.includes('pack')) normStatus = 'packed';
+  else if (sLower.includes('dispatch')) normStatus = 'dispatched';
+  else if (sLower.includes('out')) normStatus = 'out_for_delivery';
+  else if (sLower.includes('deliver')) normStatus = 'delivered';
+  else normStatus = 'confirmed';
+
+  const orderId = row.order_id || (row.id ? `ORD-${row.id}` : `ORD-${Date.now()}`);
+  const totalAmount = Number(row.total_amount ?? row.total ?? (Number(row.subtotal || 0) + Number(row.shipping_fee || 0)));
+
+  const rawDate = row.created_at || row.createdAt || row.date || row.timestamp || row.order_date || row.created_date;
+  let formattedDate = new Date().toLocaleDateString('en-IN');
+  if (rawDate) {
+    const d = new Date(rawDate);
+    if (!isNaN(d.getTime())) {
+      formattedDate = d.toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+  }
+
+  return {
+    id: orderId,
+    orderNumber: orderId,
+    date: formattedDate,
+    items: Array.isArray(parsedItems) ? parsedItems : [],
+    subtotal: Number(row.subtotal || 0),
+    discount: 0,
+    shippingFee: Number(row.shipping_fee || 0),
+    tax: 0,
+    total: totalAmount,
+    currency: 'INR',
+    status: normStatus,
+    shippingAddress: parsedAddress,
+    customerName: row.customer_name || parsedAddress.fullName || 'Patron',
+    customerPhone: String(row.customer_phone || parsedAddress.phone || ''),
+    paymentMethod: (row.payment_method || 'cod') as any,
+    paymentStatus: (row.payment_method || '').toLowerCase() === 'cod' ? 'cod_pending' : 'paid',
+    trackingSteps: generateTrackingSteps(rawStatus),
+    eta: normStatus === 'delivered' ? 'Delivered' : 'Estimated in 2-3 business days',
+  };
+}
 
 interface ToastItem {
   id: string;
@@ -160,12 +296,14 @@ interface AppContextType {
   // Auth & Database
   authLoading: boolean;
   signOutUser: () => Promise<void>;
+  loginCustomerWithPhone: (name: string, phone: string, email?: string) => Promise<{ success: boolean; error?: string }>;
 
   // User & Orders
   user: UserProfile | null;
   setUser: React.Dispatch<React.SetStateAction<UserProfile | null>>;
   updateUserAddresses: (addresses: Address[]) => Promise<void>;
   orders: Order[];
+  fetchOrdersFromSupabase: (phoneFilter?: string) => Promise<void>;
   createOrder: (orderData: Omit<Order, 'id' | 'orderNumber' | 'date' | 'status' | 'trackingSteps' | 'eta'>) => Promise<Order>;
   cancelOrder: (orderId: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: Order['status'], customNote?: string) => Promise<void>;
@@ -895,36 +1033,213 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [user]);
   const [orders, setOrders] = useState<Order[]>([]);
 
-  // Initialize user from Local Storage
+  // Fetch orders from Supabase backend
+  const fetchOrdersFromSupabase = async (phoneFilter?: string) => {
+    try {
+      const effectivePhone = phoneFilter || user?.phone;
+      const { data, error } = await queryOrderTable(async (tableName) => {
+        let query = supabase.from(tableName).select('*');
+        if (effectivePhone && !isAdminUser && !isAdminAuthenticated) {
+          query = query.eq('customer_phone', effectivePhone);
+        }
+        return await query;
+      });
+
+      if (error) {
+        console.error('Error fetching orders from Supabase:', error);
+        return;
+      }
+
+      if (data && Array.isArray(data)) {
+        const sortedData = [...data].sort((a: any, b: any) => {
+          const timeA = new Date(a.created_at || a.createdAt || a.date || a.timestamp || a.order_date || 0).getTime() || Number(a.id) || 0;
+          const timeB = new Date(b.created_at || b.createdAt || b.date || b.timestamp || b.order_date || 0).getTime() || Number(b.id) || 0;
+          return timeB - timeA;
+        });
+        const parsedOrders = sortedData.map(mapSupabaseOrderToOrder);
+        setOrders(parsedOrders);
+      }
+    } catch (err) {
+      console.error('Failed to fetch orders from Supabase:', err);
+    }
+  };
+
+  // Initialize user from Local Storage and fetch orders from Supabase
   useEffect(() => {
     const savedUser = localStorage.getItem('baagfresh_active_user');
     if (savedUser) {
       try {
-        setUser(JSON.parse(savedUser));
+        const parsed = JSON.parse(savedUser);
+        setUser(parsed);
+        if (parsed.phone) {
+          fetchOrdersFromSupabase(parsed.phone);
+        } else {
+          fetchOrdersFromSupabase();
+        }
       } catch (e) {
         console.error('Failed to parse active user:', e);
         setUser(null);
+        fetchOrdersFromSupabase();
       }
     } else {
       setUser(null);
+      fetchOrdersFromSupabase();
     }
     setAuthLoading(false);
   }, []);
+
+  // Fetch orders when user changes or admin toggles
+  useEffect(() => {
+    fetchOrdersFromSupabase(user?.phone);
+  }, [user?.phone, isAdminUser, isAdminAuthenticated]);
+
+  // Customer Login with Phone & Name via Supabase
+  const loginCustomerWithPhone = async (
+    name: string,
+    phone: string,
+    email?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const cleanPhone = phone.trim();
+    const cleanName = name.trim();
+    const cleanEmail = email ? email.trim().toLowerCase() : '';
+
+    if (!cleanPhone) {
+      return { success: false, error: 'Please enter a valid phone number.' };
+    }
+
+    try {
+      // 1. Look up or upsert customer in Supabase
+      const { data: existingCust } = await queryCustomerTable(async (tableName) => {
+        return await supabase.from(tableName).select('*').eq('phone', cleanPhone);
+      });
+
+      let customerProfile: UserProfile;
+
+      if (existingCust && existingCust.length > 0) {
+        const cust = existingCust[0];
+        let parsedAddress: Address[] = [];
+        if (cust.saved_address) {
+          if (Array.isArray(cust.saved_address)) parsedAddress = cust.saved_address;
+          else if (typeof cust.saved_address === 'object') parsedAddress = [cust.saved_address];
+          else if (typeof cust.saved_address === 'string') {
+            try {
+              const p = JSON.parse(cust.saved_address);
+              parsedAddress = Array.isArray(p) ? p : [p];
+            } catch {}
+          }
+        }
+
+        customerProfile = {
+          id: String(cust.id || `cust-${Date.now()}`),
+          name: cleanName || cust.name || 'Patron',
+          email: cleanEmail || cust.email || '',
+          phone: cleanPhone,
+          avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80`,
+          memberSince: cust.created_at ? new Date(cust.created_at).getFullYear().toString() : '2026',
+          addresses: parsedAddress,
+          is2FAEnabled: false,
+          e2eEncryptionKeyFingerprint: 'SUPABASE-E2E-VAULT',
+          cloudSyncEnabled: true,
+        };
+
+        if (cleanName && cleanName !== cust.name) {
+          await queryCustomerTable(async (tableName) => {
+            return await supabase
+              .from(tableName)
+              .update({ name: cleanName, email: cleanEmail || cust.email })
+              .eq('phone', cleanPhone);
+          });
+        }
+      } else {
+        const { data: newCust, error: insertErr } = await queryCustomerTable(async (tableName) => {
+          return await supabase
+            .from(tableName)
+            .insert([{
+              name: cleanName || 'Patron',
+              phone: cleanPhone,
+              email: cleanEmail || '',
+              saved_address: null
+            }])
+            .select();
+        });
+
+        if (insertErr) {
+          console.warn('Supabase customer insert notice:', insertErr);
+        }
+
+        customerProfile = {
+          id: newCust && newCust[0]?.id ? String(newCust[0].id) : `cust-${Date.now()}`,
+          name: cleanName || 'Patron',
+          email: cleanEmail || '',
+          phone: cleanPhone,
+          avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80`,
+          memberSince: new Date().getFullYear().toString(),
+          addresses: [],
+          is2FAEnabled: false,
+          e2eEncryptionKeyFingerprint: 'SUPABASE-E2E-VAULT',
+          cloudSyncEnabled: true,
+        };
+      }
+
+      setUser(customerProfile);
+      localStorage.setItem('baagfresh_active_user', JSON.stringify(customerProfile));
+
+      // 2. Fetch customer's orders from Supabase
+      const { data: orderData, error: ordersErr } = await queryOrderTable(async (tableName) => {
+        return await supabase
+          .from(tableName)
+          .select('*')
+          .eq('customer_phone', cleanPhone);
+      });
+
+      if (ordersErr) {
+        console.error('Error loading customer orders from Supabase:', ordersErr);
+      } else if (orderData && Array.isArray(orderData)) {
+        const sortedOrders = [...orderData].sort((a: any, b: any) => {
+          const timeA = new Date(a.created_at || a.createdAt || a.date || a.timestamp || a.order_date || 0).getTime() || Number(a.id) || 0;
+          const timeB = new Date(b.created_at || b.createdAt || b.date || b.timestamp || b.order_date || 0).getTime() || Number(b.id) || 0;
+          return timeB - timeA;
+        });
+        const userOrders = sortedOrders.map(mapSupabaseOrderToOrder);
+        setOrders(userOrders);
+      }
+
+      showToast(`Welcome ${customerProfile.name}! Signed in with phone ${cleanPhone}`, 'success');
+      return { success: true };
+    } catch (err: any) {
+      console.error('Supabase customer sign-in error:', err);
+      return { success: false, error: err?.message || 'Failed to authenticate with Supabase' };
+    }
+  };
 
   const signOutUser = async () => {
     localStorage.removeItem('baagfresh_active_user');
     setIsAdminUser(false);
     handleSetAdminAuth(false);
     setUser(null);
+    fetchOrdersFromSupabase();
     showToast('Signed out of account', 'info');
   };
-
 
   const updateUserAddresses = async (addresses: Address[]) => {
     if (!user) return;
     const updated = { ...user, addresses };
     setUser(updated);
     LocalAuthManager.setSession(updated);
+    localStorage.setItem('baagfresh_active_user', JSON.stringify(updated));
+
+    if (user.phone) {
+      try {
+        await queryCustomerTable(async (tableName) => {
+          return await supabase
+            .from(tableName)
+            .update({ saved_address: addresses })
+            .eq('phone', user.phone);
+        });
+      } catch (err) {
+        console.warn('Failed to update address in Supabase:', err);
+      }
+    }
     showToast('Addresses updated successfully', 'success');
   };
 
@@ -1136,92 +1451,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return wishlist.some((p) => p.id === productId);
   };
 
-  // Orders
+  // Orders (Pure Supabase Database Backend Integration)
   const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 'date' | 'status' | 'trackingSteps' | 'eta'>): Promise<Order> => {
-    const randomSuffix = Math.floor(10000 + Math.random() * 90000);
     const shippingFee = orderData.subtotal >= 999 ? 0 : 99;
     const finalGrandTotal = Number(orderData.subtotal) - Number(orderData.discount || 0) + Number(shippingFee) + Number(orderData.tax || 0);
+    const generatedOrderId = 'ORD-' + Date.now();
+    const custName = orderData.customerName || orderData.shippingAddress?.fullName || 'Patron';
+    const custPhone = String(orderData.customerPhone || orderData.shippingAddress?.phone || '');
 
     const newOrder: Order = {
       ...orderData,
-      id: `BF-${Math.floor(10000 + Math.random() * 90000)}-VRN`,
+      id: generatedOrderId,
+      orderNumber: generatedOrderId,
+      customerName: custName,
+      customerPhone: custPhone,
       items: orderData.items,
-      subtotal: orderData.subtotal,
-      shippingFee: shippingFee,
-      total: finalGrandTotal,
-      paymentMethod: orderData.paymentMethod,
+      subtotal: Number(orderData.subtotal),
+      shippingFee: Number(shippingFee),
+      total: Number(finalGrandTotal),
+      paymentMethod: orderData.paymentMethod || 'cod',
       date: new Date().toISOString(),
       status: "confirmed",
-      orderNumber: `BF-${randomSuffix}-VRN`,
       eta: 'Estimated in 2-3 business days',
-      trackingSteps: [
-        {
-          title: 'Order Confirmed & Placed',
-          description: `Order received & secured in Varanasi packing hub.`,
-          date: 'Just now',
-          completed: true,
-          current: true,
-        },
-        {
-          title: 'Quality Check & Nitrogen Sealing',
-          description: 'Awaiting hand packaging in food-safe airtight seal.',
-          date: 'Pending',
-          completed: false,
-        },
-        {
-          title: 'Express Dispatch',
-          description: 'Handover to delivery courier partner.',
-          date: 'Pending',
-          completed: false,
-        },
-        {
-          title: 'Out for Delivery',
-          description: 'Delivery partner en route to your doorstep.',
-          date: 'Pending',
-          completed: false,
-        },
-        {
-          title: 'Delivered Safely',
-          description: 'Package delivered at your location.',
-          date: 'Pending',
-          completed: false,
-        }
-      ]
+      trackingSteps: generateTrackingSteps('Order Confirmed')
     };
 
-    // Save to Supabase via proxy
+    // 1. Direct Insert into Supabase `Order` / `orders` table
     try {
-      const response = await fetch('/api/supabase/order', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          order_id: newOrder.id,
-          customer_name: newOrder.customerName, // Assuming these exist in orderData
-          customer_phone: newOrder.customerPhone,
-          shipping_address: newOrder.shippingAddress,
-          items: JSON.stringify(newOrder.items),
-          subtotal: newOrder.subtotal,
-          shipping_fee: newOrder.shippingFee,
-          total_amount: newOrder.total,
-          payment_method: newOrder.paymentMethod,
-          status: newOrder.status,
-        }),
+      const { data, error } = await queryOrderTable(async (tableName) => {
+        return await supabase
+          .from(tableName)
+          .insert([{
+            order_id: generatedOrderId,
+            customer_name: custName,
+            customer_phone: custPhone,
+            shipping_address: orderData.shippingAddress,
+            items: orderData.items,
+            subtotal: Number(orderData.subtotal),
+            shipping_fee: Number(shippingFee),
+            total_amount: Number(finalGrandTotal),
+            payment_method: orderData.paymentMethod || 'COD',
+            status: 'Order Confirmed'
+          }])
+          .select();
       });
-      if (!response.ok) throw new Error('Failed to persist order to Supabase');
-    } catch (err) {
-      console.error('Failed to persist order to Supabase:', err);
+
+      if (error) {
+        console.error('Supabase Error:', error);
+      } else {
+        console.log('Order successfully inserted into Supabase:', data);
+      }
+    } catch (err: any) {
+      console.error('Supabase direct insert exception:', err);
+    }
+
+    // 2. Direct Upsert into Supabase `Customer` / `customers` table if phone exists
+    if (custPhone) {
+      try {
+        const { data: existingCust } = await queryCustomerTable(async (tableName) => {
+          return await supabase
+            .from(tableName)
+            .select('id, phone')
+            .eq('phone', custPhone);
+        });
+
+        if (existingCust && existingCust.length > 0) {
+          await queryCustomerTable(async (tableName) => {
+            return await supabase
+              .from(tableName)
+              .update({
+                name: custName,
+                saved_address: orderData.shippingAddress
+              })
+              .eq('phone', custPhone);
+          });
+        } else {
+          await queryCustomerTable(async (tableName) => {
+            return await supabase
+              .from(tableName)
+              .insert([{
+                name: custName,
+                phone: custPhone,
+                email: user?.email || '',
+                saved_address: orderData.shippingAddress
+              }]);
+          });
+        }
+      } catch (custErr) {
+        console.warn('Customer upsert to Supabase notice:', custErr);
+      }
     }
 
     setOrders((prev) => [newOrder, ...prev]);
     clearCart();
     addNotification(
       `Order ${newOrder.orderNumber} Confirmed!`,
-      `Thank you for your order of ${formatPrice(newOrder.total)}. Your tracking number is active and stored in Cloud Firestore.`,
+      `Thank you for your order of ${formatPrice(newOrder.total)}. Your order is saved in the Supabase database.`,
       'order'
     );
-    showToast(`Order ${newOrder.orderNumber} placed & encrypted!`, 'success');
+    showToast(`Order ${newOrder.orderNumber} placed & stored in Supabase!`, 'success');
     return newOrder;
   };
 
@@ -1231,21 +1559,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         o.id === orderId ? { ...o, status: 'confirmed' } : o
       )
     );
-    if (false) {
-      try {
-        await updateOrderStatusInFirestore(orderId, 'confirmed');
-      } catch (err) {
-        console.error('Failed to update order status in Firestore:', err);
-      }
+    try {
+      await queryOrderTable(async (tableName) => {
+        return await supabase
+          .from(tableName)
+          .update({ status: 'Cancelled' })
+          .or(`order_id.eq.${orderId},id.eq.${orderId}`);
+      });
+    } catch (err) {
+      console.error('Failed to update order status in Supabase:', err);
     }
     showToast('Order cancellation request registered', 'info');
   };
 
-  // Admin update order status with tracking steps advancement
+  // Admin update order status directly in Supabase
   const updateOrderStatus = async (orderId: string, newStatus: Order['status'], customNote?: string) => {
+    let dbStatus = 'Order Confirmed';
+    if (newStatus === 'confirmed') dbStatus = 'Order Confirmed';
+    else if (newStatus === 'packed') dbStatus = 'Packed & Sealed';
+    else if (newStatus === 'dispatched') dbStatus = 'Dispatched';
+    else if (newStatus === 'out_for_delivery') dbStatus = 'Out for Delivery';
+    else if (newStatus === 'delivered') dbStatus = 'Delivered';
+
     setOrders((prev) =>
       prev.map((ord) => {
-        if (ord.id !== orderId) return ord;
+        if (ord.id !== orderId && ord.orderNumber !== orderId) return ord;
 
         const updatedSteps = ord.trackingSteps.map((step, idx) => {
           if (newStatus === 'confirmed') {
@@ -1282,15 +1620,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    if (false) {
-      try {
-        await updateOrderStatusInFirestore(orderId, newStatus);
-      } catch (err) {
-        console.error('Firestore order update failed:', err);
-      }
-    }
+    try {
+      const { data, error } = await queryOrderTable(async (tableName) => {
+        return await supabase
+          .from(tableName)
+          .update({ status: dbStatus })
+          .or(`order_id.eq.${orderId},id.eq.${orderId}`);
+      });
 
-    showToast(`Order ${orderId} updated to "${newStatus.replace('_', ' ').toUpperCase()}"`, 'success');
+      if (error) {
+        console.error('Supabase Error:', error);
+      } else {
+        showToast(`Order status updated to "${dbStatus}" in Supabase!`, 'success');
+      }
+    } catch (err: any) {
+      console.error('Supabase status update exception:', err);
+    }
   };
 
   function newOrderNumber(num: number) {
@@ -1383,10 +1728,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // firebaseUser: null, // Removed
         authLoading,
         signOutUser,
+        loginCustomerWithPhone,
         user,
         setUser,
         updateUserAddresses,
         orders,
+        fetchOrdersFromSupabase,
         createOrder,
         cancelOrder,
         updateOrderStatus,

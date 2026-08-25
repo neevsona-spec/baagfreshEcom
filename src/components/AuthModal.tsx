@@ -23,6 +23,8 @@ export const AuthModal: React.FC = () => {
     setIsAuthOpen, 
     user, 
     setUser,
+    signOutUser,
+    loginCustomerWithPhone,
     showToast,
   } = useApp();
 
@@ -34,21 +36,20 @@ export const AuthModal: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const isGuest = !user || user.id === 'usr-guest-00' || user.name === 'Guest Patron' || !user.email;
+  const isGuest = !user || user.id === 'usr-guest-00' || user.name === 'Guest Patron';
 
   const handleCustomerAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanContact = emailOrPhone.trim().toLowerCase();
+    const cleanContact = emailOrPhone.trim();
     const cleanName = name.trim();
-    const cleanPass = password.trim();
 
     if (!cleanContact) {
-      setError('Please enter your email address or mobile number.');
+      setError('Please enter your mobile phone number or email.');
       return;
     }
 
     if (mode === 'signup' && !cleanName) {
-      setError('Please enter your name.');
+      setError('Please enter your full name.');
       return;
     }
 
@@ -56,55 +57,25 @@ export const AuthModal: React.FC = () => {
     setError(null);
 
     try {
-      const users: UserProfile[] = JSON.parse(localStorage.getItem('baagfresh_users') || '[]');
+      const isEmail = cleanContact.includes('@');
+      const phone = isEmail ? '' : cleanContact;
+      const email = isEmail ? cleanContact : '';
 
-      if (mode === 'signup') {
-        const newUser: UserProfile = { 
-          id: Date.now().toString(),
-          name: cleanName, 
-          email: cleanContact, 
-          phone: '',
-          avatar: '',
-          memberSince: new Date().toLocaleDateString(),
-          addresses: [],
-          is2FAEnabled: false,
-          e2eEncryptionKeyFingerprint: '',
-          cloudSyncEnabled: false,
-          pin: cleanPass
-        };
-        
-        users.push(newUser);
-        localStorage.setItem('baagfresh_users', JSON.stringify(users));
-        localStorage.setItem('baagfresh_active_user', JSON.stringify(newUser));
-        
-        setUser(newUser);
-        showToast('Account created successfully!', 'success');
+      const res = await loginCustomerWithPhone(cleanName || (isEmail ? cleanContact.split('@')[0] : 'Patron'), phone || cleanContact, email);
+      if (res.success) {
         setIsAuthOpen(false);
       } else {
-        const foundUser = users.find(
-          (u) => u.email === cleanContact
-        );
-
-        if (foundUser) {
-          localStorage.setItem('baagfresh_active_user', JSON.stringify(foundUser));
-          setUser(foundUser);
-          showToast('Signed in successfully!', 'success');
-          setIsAuthOpen(false);
-        } else {
-          setError('No account found. Please sign up first.');
-        }
+        setError(res.error || 'Authentication failed. Please check your connection.');
       }
-    } catch (e) {
-      setError('An error occurred during authentication.');
+    } catch (e: any) {
+      setError(e?.message || 'An error occurred during Supabase authentication.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSignOut = () => {
-    localStorage.removeItem('baagfresh_current_user');
-    setUser(null);
-    showToast('Signed out successfully', 'info');
+    signOutUser();
     setIsAuthOpen(false);
   };
 

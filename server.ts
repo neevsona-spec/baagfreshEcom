@@ -11,25 +11,42 @@ const PORT = 3000;
 app.use(express.json({ limit: "10mb" }));
 
 // Supabase Proxy Client
-const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://yarbuasdzujbtrwcfdwb.supabase.co';
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_TKF3pz5CdryPzu7v_YQ9sA_0A6d5x_E';
+const defaultSupabaseUrl = 'https://yarbuasdzujbtrwcfdwb.supabase.co';
+const defaultSupabaseAnonKey = 'sb_publishable_TKF3pz5CdryPzu7v_YQ9sA_0A6d5x_E';
+
+const rawServerUrl = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
+const rawServerKey = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
+
+const supabaseUrl = (rawServerUrl && (rawServerUrl.startsWith('http://') || rawServerUrl.startsWith('https://')))
+  ? rawServerUrl
+  : defaultSupabaseUrl;
+const supabaseAnonKey = rawServerKey || defaultSupabaseAnonKey;
+
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+async function serverQueryOrder(executor: (tbl: string) => any) {
+  let res = await executor('Order');
+  if (res && res.error && (res.error.code === 'PGRST205' || res.error.message?.includes('Could not find the table'))) {
+    res = await executor('orders');
+  }
+  return res;
+}
 
 // Supabase Proxy Routes
 app.post("/api/supabase/order", async (req, res) => {
-  const { data, error } = await supabase.from('orders').insert([req.body]);
+  const { data, error } = await serverQueryOrder((tbl) => supabase.from(tbl).insert([req.body]));
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true, data });
 });
 
 app.get("/api/supabase/orders/:phone", async (req, res) => {
-  const { data, error } = await supabase.from('orders').select('*').eq('customer_phone', req.params.phone);
+  const { data, error } = await serverQueryOrder((tbl) => supabase.from(tbl).select('*').eq('customer_phone', req.params.phone));
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true, data });
 });
 
 app.get("/api/supabase/orders", async (req, res) => {
-  const { data, error } = await supabase.from('orders').select('*');
+  const { data, error } = await serverQueryOrder((tbl) => supabase.from(tbl).select('*'));
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true, data });
 });

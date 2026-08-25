@@ -19,7 +19,13 @@ const supabaseAnonKey = rawKey || defaultSupabaseAnonKey;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Discovered table names cache
+export const ADMIN_EMAILS = [
+  'neevsona@gmail.com',
+  'admin@baagfresh.in',
+  'admin@baagfresh.com',
+  'maan1986@gmail.com'
+];
+
 let resolvedOrderTable: string = 'Order';
 export const getResolvedOrderTable = () => resolvedOrderTable;
 let resolvedCustomerTable: string = 'Customer';

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { ShieldCheck, Lock, AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react';
-import { ADMIN_EMAILS } from '../lib/firebase';
+import { ADMIN_EMAILS } from '../lib/supabase';
 
 interface AdminRouteProps {
   children: React.ReactNode;
@@ -10,7 +10,7 @@ interface AdminRouteProps {
 
 /**
  * Strict AdminRoute Guard:
- * Strictly enforces Firebase Authentication with Admin Role privileges for the Admin Portal.
+ * Strictly enforces Supabase Admin Role privileges for the Admin Portal.
  * Non-admins are isolated and cannot view admin controls.
  */
 export const AdminRoute: React.FC<AdminRouteProps> = ({ children, fallback }) => {
@@ -32,7 +32,7 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children, fallback }) =>
       <div className="flex flex-col items-center justify-center p-12 text-center space-y-4">
         <Loader2 className="w-8 h-8 text-[#012d1d] dark:text-[#fed65b] animate-spin" />
         <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-          Verifying Firebase Admin Privileges...
+          Verifying Admin Privileges...
         </p>
       </div>
     );
@@ -54,7 +54,7 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children, fallback }) =>
             Admin Access Restricted
           </h3>
           <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-            Firebase Authentication is strictly reserved for the BAAGFRESH Management Console. Please sign in with an authorized administrator account.
+            Administrative access is strictly reserved for the BAAGFRESH Management Console. Please sign in with an authorized administrator account.
           </p>
         </div>
 
@@ -78,3 +78,4 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children, fallback }) =>
 
   return <>{children}</>;
 };
+

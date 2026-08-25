@@ -21,6 +21,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Discovered table names cache
 let resolvedOrderTable: string = 'Order';
+export const getResolvedOrderTable = () => resolvedOrderTable;
 let resolvedCustomerTable: string = 'Customer';
 
 /**

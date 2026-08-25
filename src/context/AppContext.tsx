@@ -999,6 +999,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Automatically propagate live product changes to QuickView modal if active
   useEffect(() => {
+    // Real-time Supabase Subscription
+    const channel1 = supabase.channel('realtime:orders:1')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'Order' }, payload => {
+        fetchOrdersFromSupabase();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Order' }, payload => {
+        fetchOrdersFromSupabase();
+      })
+      .subscribe();
+    
+    const channel2 = supabase.channel('realtime:orders:2')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
+        fetchOrdersFromSupabase();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, payload => {
+        fetchOrdersFromSupabase();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel1);
+      supabase.removeChannel(channel2);
+    };
+  }, []);
+  useEffect(() => {
     if (quickViewProduct) {
       const liveProduct = products.find((p) => p.id === quickViewProduct.id);
       if (liveProduct && (liveProduct.basePrice !== quickViewProduct.basePrice || liveProduct.inStock !== quickViewProduct.inStock || liveProduct.name !== quickViewProduct.name)) {

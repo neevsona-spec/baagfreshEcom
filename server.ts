@@ -32,25 +32,6 @@ async function serverQueryOrder(executor: (tbl: string) => any) {
   return res;
 }
 
-// Supabase Proxy Routes
-app.post("/api/supabase/order", async (req, res) => {
-  const { data, error } = await serverQueryOrder((tbl) => supabase.from(tbl).insert([req.body]));
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, data });
-});
-
-app.get("/api/supabase/orders/:phone", async (req, res) => {
-  const { data, error } = await serverQueryOrder((tbl) => supabase.from(tbl).select('*').eq('customer_phone', req.params.phone));
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, data });
-});
-
-app.get("/api/supabase/orders", async (req, res) => {
-  const { data, error } = await serverQueryOrder((tbl) => supabase.from(tbl).select('*'));
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, data });
-});
-
 // Lazy Google GenAI Client
 let genAIClient: GoogleGenAI | null = null;
 function getGenAI(): GoogleGenAI | null {

@@ -83,7 +83,7 @@ export const WholesaleModal: React.FC = () => {
               Our B2B trade desk manager will review your requirement and reach out with wholesale tier quotations within 2 business hours.
             </p>
             <div className="text-[11px] text-slate-400">
-              Ref: Inq registered in Admin Control Center.
+              Ref: Inquiry logged with wholesale procurement team.
             </div>
           </div>
         ) : (

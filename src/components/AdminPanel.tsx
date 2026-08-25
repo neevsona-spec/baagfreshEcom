@@ -98,7 +98,7 @@ export const AdminPanel: React.FC = () => {
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
 
   // Fresh Admin Credentials Form
-  const [adminEmail, setAdminEmail] = useState('neevsona@gmail.com');
+  const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberSession, setRememberSession] = useState(true);
@@ -282,36 +282,6 @@ export const AdminPanel: React.FC = () => {
       authLogger.logError(err, 'Supabase Admin Authentication');
       setAuthError(err?.message || 'Authentication failed. Please verify credentials.');
       recordFailedAttempt();
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleQuickMasterLogin = async () => {
-    setAuthLoading(true);
-    setAuthError('');
-    setAuthSuccess('');
-    try {
-      const masterEmail = ADMIN_EMAILS[0] || 'neevsona@gmail.com';
-      setIsAdminAuthenticated(true);
-      localStorage.setItem('baagfresh_admin_session', 'active');
-      sessionStorage.setItem('baagfresh_admin_session', 'active');
-      
-      setUser((prev) => ({
-        ...prev,
-        id: 'admin-master',
-        name: 'Master Administrator (Neev Sona)',
-        email: masterEmail,
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        memberSince: 'Store Founder & Master Admin'
-      }));
-
-      setAuthSuccess(`Instant Master Access Verified (${masterEmail})`);
-      showToast(`Master Administrator Authenticated: ${masterEmail}`, 'success');
-      await fetchOrdersFromSupabase();
-      fetchSecurityAuditData(masterEmail);
-    } catch (err: any) {
-      setAuthError('Instant login failed.');
     } finally {
       setAuthLoading(false);
     }
@@ -727,22 +697,6 @@ export const AdminPanel: React.FC = () => {
                   )}
                 </button>
               </form>
-
-              {/* Quick Access Master Button */}
-              <div className="pt-2 border-t border-slate-100 dark:border-[#1b4332] space-y-2">
-                <div className="text-center text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                  Quick Master Access
-                </div>
-                <button
-                  type="button"
-                  onClick={handleQuickMasterLogin}
-                  disabled={authLoading}
-                  className="w-full py-2.5 px-3 rounded-xl border border-amber-300 dark:border-[#594d27] bg-amber-50/80 hover:bg-amber-100/90 dark:bg-[#2a240d] dark:hover:bg-[#3d3314] text-[#012d1d] dark:text-[#fed65b] font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-                >
-                  <Sparkles className="w-4 h-4 text-amber-600 dark:text-[#fed65b]" />
-                  <span>1-Click Master Access (neevsona@gmail.com)</span>
-                </button>
-              </div>
 
               <div className="pt-2 text-center">
                 <div className="text-[10px] text-slate-400 flex items-center justify-center gap-1.5">

@@ -15,7 +15,7 @@ import { CATEGORIES } from '../data/products';
 import { BaagfreshLogo } from './BaagfreshLogo';
 
 export const Footer: React.FC = () => {
-  const { setSelectedCategory, setIsProfileOpen, setIsAdminOpen, setIsWholesaleOpen, storeSettings } = useApp();
+  const { setSelectedCategory, setIsProfileOpen, setIsAdminOpen, setIsWholesaleOpen, storeSettings, isAdminAuthenticated } = useApp();
 
   return (
     <footer className="bg-[#012417] text-[#FAF3E0] border-t border-[#1b4332] pt-12 pb-8">
@@ -159,15 +159,18 @@ export const Footer: React.FC = () => {
                   Corporate & Wedding Bulk Orders
                 </button>
               </li>
-              <li>
-                <button
-                  onClick={() => setIsAdminOpen(true)}
-                  className="text-[#fed65b]/90 hover:text-[#fed65b] transition-colors font-semibold flex items-center gap-1"
-                >
-                  <span>Admin Control Center</span>
-                  <span className="text-[10px] bg-[#fed65b]/20 px-1.5 py-0.5 rounded border border-[#fed65b]/30">Portal</span>
-                </button>
-              </li>
+              {isAdminAuthenticated && (
+                <li>
+                  <button
+                    id="footer-admin-btn"
+                    onClick={() => setIsAdminOpen(true)}
+                    className="text-[#fed65b]/90 hover:text-[#fed65b] transition-colors font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Admin Control Center</span>
+                    <span className="text-[10px] bg-[#fed65b]/20 px-1.5 py-0.5 rounded border border-[#fed65b]/30">Portal</span>
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { HeroSlider } from './components/HeroSlider';
@@ -172,8 +172,47 @@ const AppContent: React.FC = () => {
     isGmailHubOpen, 
     setIsGmailHubOpen, 
     gmailHubInitialOrder, 
-    gmailHubInitialInquiry 
+    gmailHubInitialInquiry,
+    setIsAdminOpen 
   } = useApp();
+
+  // Secret Administrator Hotkeys & URL listener (No public buttons visible to store visitors)
+  useEffect(() => {
+    const checkAdminTrigger = () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (
+        searchParams.get('admin') === 'true' || 
+        searchParams.get('admin') === '1' || 
+        window.location.hash === '#admin' || 
+        window.location.pathname.toLowerCase().endsWith('/admin')
+      ) {
+        setIsAdminOpen(true);
+      }
+    };
+
+    checkAdminTrigger();
+    window.addEventListener('hashchange', checkAdminTrigger);
+    window.addEventListener('popstate', checkAdminTrigger);
+
+    // Keyboard shortcut: Ctrl+Shift+A or Cmd+Shift+A or Alt+A
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        setIsAdminOpen(true);
+      } else if (e.altKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        setIsAdminOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('hashchange', checkAdminTrigger);
+      window.removeEventListener('popstate', checkAdminTrigger);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [setIsAdminOpen]);
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#07130d] text-slate-900 dark:text-slate-100 font-sans selection:bg-[#012d1d] selection:text-[#fed65b] transition-colors duration-300">

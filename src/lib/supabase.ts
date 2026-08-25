@@ -1,14 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
 const defaultSupabaseUrl = 'https://yarbuasdzujbtrwcfdwb.supabase.co';
-const defaultSupabaseAnonKey = 'sb_publishable_TKF3pz5CdryPzu7v_YQ9sA_0A6d5x_E';
+const defaultSupabaseAnonKey = 'sb_publishable_TKF3pz5CdryPzu7vd0oKlg_RHOjOhHO';
 
 const rawUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL)
   ? String(import.meta.env.VITE_SUPABASE_URL).trim()
   : '';
 
-const rawKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY)
-  ? String(import.meta.env.VITE_SUPABASE_ANON_KEY).trim()
+const rawKey = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_ANON_KEY || import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY))
+  ? String(import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY).trim()
   : '';
 
 const supabaseUrl = (rawUrl && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')))
@@ -30,19 +30,21 @@ let resolvedCustomerTable: string = 'Customer';
 export async function queryOrderTable<T = any>(
   executor: (tableName: string) => Promise<{ data: T | null; error: any }>
 ): Promise<{ data: T | null; error: any }> {
-  const primaryTable = resolvedOrderTable;
-  const secondaryTable = primaryTable === 'Order' ? 'orders' : 'Order';
-
-  const res1 = await executor(primaryTable);
-  if (res1.error && (res1.error.code === 'PGRST205' || res1.error.message?.includes('Could not find the table'))) {
-    console.warn(`Table "${primaryTable}" not found. Retrying with "${secondaryTable}"...`);
-    const res2 = await executor(secondaryTable);
-    if (!res2.error) {
-      resolvedOrderTable = secondaryTable;
+  const possibleTables = ['Order', 'orders', 'Orders', 'OrderDetails'];
+  
+  let lastRes: { data: T | null; error: any } = { data: null, error: null };
+  
+  for (const tableName of possibleTables) {
+    const res = await executor(tableName);
+    if (!res.error) {
+      resolvedOrderTable = tableName;
+      return res;
     }
-    return res2;
+    lastRes = res;
+    console.warn(`Table "${tableName}" check failed:`, res.error.message);
   }
-  return res1;
+  
+  return lastRes;
 }
 
 /**
@@ -51,18 +53,20 @@ export async function queryOrderTable<T = any>(
 export async function queryCustomerTable<T = any>(
   executor: (tableName: string) => Promise<{ data: T | null; error: any }>
 ): Promise<{ data: T | null; error: any }> {
-  const primaryTable = resolvedCustomerTable;
-  const secondaryTable = primaryTable === 'Customer' ? 'customers' : 'Customer';
-
-  const res1 = await executor(primaryTable);
-  if (res1.error && (res1.error.code === 'PGRST205' || res1.error.message?.includes('Could not find the table'))) {
-    console.warn(`Table "${primaryTable}" not found. Retrying with "${secondaryTable}"...`);
-    const res2 = await executor(secondaryTable);
-    if (!res2.error) {
-      resolvedCustomerTable = secondaryTable;
+  const possibleTables = ['Customer', 'customers', 'Customers'];
+  
+  let lastRes: { data: T | null; error: any } = { data: null, error: null };
+  
+  for (const tableName of possibleTables) {
+    const res = await executor(tableName);
+    if (!res.error) {
+      resolvedCustomerTable = tableName;
+      return res;
     }
-    return res2;
+    lastRes = res;
+    console.warn(`Table "${tableName}" check failed:`, res.error.message);
   }
-  return res1;
+  
+  return lastRes;
 }
 

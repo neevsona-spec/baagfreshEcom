@@ -10,12 +10,12 @@ const PORT = 3000;
 
 app.use(express.json({ limit: "10mb" }));
 
-// Supabase Proxy Client
+// Supabase Server Client
 const defaultSupabaseUrl = 'https://yarbuasdzujbtrwcfdwb.supabase.co';
-const defaultSupabaseAnonKey = 'sb_publishable_TKF3pz5CdryPzu7v_YQ9sA_0A6d5x_E';
+const defaultSupabaseAnonKey = 'sb_publishable_TKF3pz5CdryPzu7vd0oKlg_RHOjOhHO';
 
-const rawServerUrl = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
-const rawServerKey = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
+const rawServerUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
+const rawServerKey = (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
 
 const supabaseUrl = (rawServerUrl && (rawServerUrl.startsWith('http://') || rawServerUrl.startsWith('https://')))
   ? rawServerUrl

@@ -1002,18 +1002,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Real-time Supabase Subscription
     const channel1 = supabase.channel('realtime:orders:1')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'Order' }, payload => {
+        console.log('Real-time INSERT on Order:', payload);
         fetchOrdersFromSupabase();
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'Order' }, payload => {
+        console.log('Real-time UPDATE on Order:', payload);
         fetchOrdersFromSupabase();
       })
       .subscribe();
     
     const channel2 = supabase.channel('realtime:orders:2')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
+        console.log('Real-time INSERT on orders:', payload);
         fetchOrdersFromSupabase();
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, payload => {
+        console.log('Real-time UPDATE on orders:', payload);
         fetchOrdersFromSupabase();
       })
       .subscribe();
@@ -1062,6 +1066,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const fetchOrdersFromSupabase = async (phoneFilter?: string) => {
     try {
       const effectivePhone = phoneFilter || user?.phone;
+      console.log('Fetching orders. isAdminUser:', isAdminUser, 'isAdminAuthenticated:', isAdminAuthenticated, 'Phone:', effectivePhone);
       const { data, error } = await queryOrderTable(async (tableName) => {
         let query = supabase.from(tableName).select('*');
         if (effectivePhone && !isAdminUser && !isAdminAuthenticated) {
@@ -1074,6 +1079,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.error('Error fetching orders from Supabase:', error);
         return;
       }
+
+      console.log('Fetched orders data count:', data?.length);
 
       if (data && Array.isArray(data)) {
         const sortedData = [...data].sort((a: any, b: any) => {

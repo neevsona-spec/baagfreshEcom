@@ -3,11 +3,36 @@ import http from "http";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { createClient } from '@supabase/supabase-js';
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: "10mb" }));
+
+// Supabase Proxy Client
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://yarbuasdzujbtrwcfdwb.supabase.co';
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_TKF3pz5CdryPzu7v_YQ9sA_0A6d5x_E';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Supabase Proxy Routes
+app.post("/api/supabase/order", async (req, res) => {
+  const { data, error } = await supabase.from('orders').insert([req.body]);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true, data });
+});
+
+app.get("/api/supabase/orders/:phone", async (req, res) => {
+  const { data, error } = await supabase.from('orders').select('*').eq('customer_phone', req.params.phone);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true, data });
+});
+
+app.get("/api/supabase/orders", async (req, res) => {
+  const { data, error } = await supabase.from('orders').select('*');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true, data });
+});
 
 // Lazy Google GenAI Client
 let genAIClient: GoogleGenAI | null = null;

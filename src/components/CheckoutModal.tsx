@@ -160,6 +160,8 @@ export const CheckoutModal: React.FC = () => {
       total: finalTotal,
       currency,
       shippingAddress,
+      customerName: formData.fullName,
+      customerPhone: formData.phone,
       paymentMethod: method,
       paymentStatus: method === 'cod' ? 'cod_pending' : 'paid',
     });

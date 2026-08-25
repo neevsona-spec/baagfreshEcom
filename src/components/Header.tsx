@@ -23,6 +23,7 @@ import { CURRENCIES, LANGUAGES } from '../data/currencies';
 import { CurrencyCode, LanguageCode, CategorySlug } from '../types';
 import { CATEGORIES } from '../data/products';
 import { BaagfreshLogo } from './BaagfreshLogo';
+import { ThemeToggle } from './ThemeToggle';
 import { resolveProductImage } from '../utils/productImageResolver';
 
 export const Header: React.FC = () => {
@@ -267,19 +268,9 @@ export const Header: React.FC = () => {
               )}
             </div>
 
-            {/* Dark/Light Mode Toggle */}
-            <button
-              id="theme-toggle-btn"
-              onClick={toggleDarkMode}
-              className="p-1 rounded-full text-[#fed65b] hover:bg-[#1b4332] transition-colors"
-              title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-              aria-label="Toggle Theme"
-            >
-              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
+            </div>
           </div>
         </div>
-      </div>
 
       {/* Main Navigation Header */}
       <div className="bg-[#FAF3E0] dark:bg-[#0f241a] border-b border-[#e8dfc8] dark:border-[#1b3d2c] transition-colors duration-300">
@@ -572,6 +563,7 @@ export const Header: React.FC = () => {
 
             {/* Action Buttons (Wishlist, Notifications, Cart, Account) */}
             <div className="flex items-center gap-1 sm:gap-1.5">
+              <ThemeToggle />
               {/* Wishlist */}
               <button
                 id="header-wishlist-btn"
@@ -845,12 +837,15 @@ export const Header: React.FC = () => {
             <div>
               <div className="flex items-center justify-between pb-4 border-b border-[#d6caba] dark:border-[#275943]">
                 <BaagfreshLogo size="sm" showTagline={false} />
-                <button
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
-                >
-                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <ThemeToggle />
+                  <button
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
+                  >
+                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </button>
+                </div>
               </div>
 
               <div className="py-4 space-y-2 border-b border-[#d6caba] dark:border-[#275943]">

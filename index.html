@@ -11,6 +11,15 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌿</text></svg>" />
     <script>
       (function() {
+        if (localStorage.getItem('baagfresh_theme') === 'dark' || (!('baagfresh_theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      })();
+    </script>
+    <script>
+      (function() {
         var BANNED_PATTERNS = [
           'metamask',
           'ethereum',

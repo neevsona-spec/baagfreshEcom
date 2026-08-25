@@ -1151,7 +1151,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       total: finalGrandTotal,
       paymentMethod: orderData.paymentMethod,
       date: new Date().toISOString(),
-      status: "Order Confirmed",
+      status: "confirmed",
       orderNumber: `BF-${randomSuffix}-VRN`,
       eta: 'Estimated in 2-3 business days',
       trackingSteps: [
@@ -1189,13 +1189,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]
     };
 
-    // Save to Firestore if user is authenticated (Bypass Firebase for now)
-    if (false) {
-      try {
-        await saveOrderToFirestore(newOrder, user?.id || '');
-      } catch (err) {
-        console.error('Failed to persist order to Firestore:', err);
-      }
+    // Save to Supabase via proxy
+    try {
+      const response = await fetch('/api/supabase/order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          order_id: newOrder.id,
+          customer_name: newOrder.customerName, // Assuming these exist in orderData
+          customer_phone: newOrder.customerPhone,
+          shipping_address: newOrder.shippingAddress,
+          items: JSON.stringify(newOrder.items),
+          subtotal: newOrder.subtotal,
+          shipping_fee: newOrder.shippingFee,
+          total_amount: newOrder.total,
+          payment_method: newOrder.paymentMethod,
+          status: newOrder.status,
+        }),
+      });
+      if (!response.ok) throw new Error('Failed to persist order to Supabase');
+    } catch (err) {
+      console.error('Failed to persist order to Supabase:', err);
     }
 
     setOrders((prev) => [newOrder, ...prev]);

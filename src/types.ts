@@ -118,6 +118,8 @@ export interface Order {
   currency: CurrencyCode;
   status: 'confirmed' | 'packed' | 'dispatched' | 'out_for_delivery' | 'delivered';
   shippingAddress: Address;
+  customerName: string;
+  customerPhone: string;
   paymentMethod: PaymentMethod;
   paymentStatus: 'paid' | 'pending' | 'cod_pending';
   trackingSteps: TrackingStep[];

@@ -116,7 +116,7 @@ export interface Order {
   tax: number;
   total: number;
   currency: CurrencyCode;
-  status: 'confirmed' | 'packed' | 'dispatched' | 'out_for_delivery' | 'delivered';
+  status: 'confirmed' | 'packed' | 'dispatched' | 'out_for_delivery' | 'delivered' | 'cancelled';
   shippingAddress: Address;
   customerName: string;
   customerPhone: string;

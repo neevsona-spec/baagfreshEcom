@@ -54,6 +54,27 @@ import {
 
 export function generateTrackingSteps(status: string): TrackingStep[] {
   const norm = (status || '').toLowerCase();
+  const isCancelled = norm.includes('cancel');
+
+  if (isCancelled) {
+    return [
+      {
+        title: 'Order Registered',
+        description: 'Order registered in Supabase database.',
+        date: 'Completed',
+        completed: true,
+        current: false,
+      },
+      {
+        title: 'Order Cancelled',
+        description: 'Order cancelled upon request & synchronized with Supabase.',
+        date: 'Updated',
+        completed: true,
+        current: true,
+      }
+    ];
+  }
+
   const isConfirmed = true;
   const isPacked = norm.includes('pack') || norm.includes('dispatch') || norm.includes('out') || norm.includes('deliver');
   const isDispatched = norm.includes('dispatch') || norm.includes('out') || norm.includes('deliver');
@@ -186,7 +207,8 @@ export function mapSupabaseOrderToOrder(row: any): Order {
   const rawStatus = row.status || 'confirmed';
   let normStatus: Order['status'] = 'confirmed';
   const sLower = rawStatus.toLowerCase();
-  if (sLower.includes('pack')) normStatus = 'packed';
+  if (sLower.includes('cancel')) normStatus = 'cancelled';
+  else if (sLower.includes('pack')) normStatus = 'packed';
   else if (sLower.includes('dispatch')) normStatus = 'dispatched';
   else if (sLower.includes('out')) normStatus = 'out_for_delivery';
   else if (sLower.includes('deliver')) normStatus = 'delivered';
@@ -1540,7 +1562,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await apiUpdateOrderStatus(orderId, 'Cancelled');
       setOrders((prev) =>
         prev.map((o) =>
-          o.id === orderId || o.orderNumber === orderId ? { ...o, status: 'confirmed' } : o
+          o.id === orderId || o.orderNumber === orderId
+            ? { ...o, status: 'cancelled', trackingSteps: generateTrackingSteps('cancelled'), eta: 'Cancelled' }
+            : o
         )
       );
       showToast(`Order #${orderId} cancellation updated in Supabase`, 'info');
@@ -1558,10 +1582,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     else if (newStatus === 'dispatched') dbStatus = 'Dispatched';
     else if (newStatus === 'out_for_delivery') dbStatus = 'Out for Delivery';
     else if (newStatus === 'delivered') dbStatus = 'Delivered';
+    else if (newStatus === 'cancelled') dbStatus = 'Cancelled';
 
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id !== orderId && ord.orderNumber !== orderId) return ord;
+
+        if (newStatus === 'cancelled') {
+          return {
+            ...ord,
+            status: 'cancelled',
+            trackingSteps: generateTrackingSteps('cancelled'),
+            eta: 'Cancelled'
+          };
+        }
 
         const updatedSteps = ord.trackingSteps.map((step, idx) => {
           if (newStatus === 'confirmed') {

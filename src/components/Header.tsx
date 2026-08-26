@@ -646,19 +646,24 @@ export const Header: React.FC = () => {
                 </button>
               )}
 
-              {/* Admin Portal Access (Only if already authenticated as Admin) */}
-              {isAdminAuthenticated && (
-                <button
-                  id="header-admin-quick-btn"
-                  onClick={() => setIsAdminOpen(true)}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-[#fed65b] hover:bg-[#ffe28a] text-[#012d1d] rounded-full transition-all text-[11px] font-extrabold shadow-sm border border-[#012d1d]/20 animate-fadeIn"
-                  title="Open Admin Console"
-                  aria-label="Admin Portal"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#012d1d]" />
-                  <span className="hidden sm:inline">Admin</span>
-                </button>
-              )}
+              {/* Admin Portal Access for Website Owner */}
+              <button
+                id="header-admin-quick-btn"
+                onClick={() => setIsAdminOpen(true)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all text-[11px] font-extrabold shadow-sm border cursor-pointer ${
+                  isAdminAuthenticated
+                    ? 'bg-[#fed65b] hover:bg-[#ffe28a] text-[#012d1d] border-[#012d1d]/30 ring-1 ring-[#fed65b]/60'
+                    : 'bg-[#163a2c] hover:bg-[#235843] text-[#fed65b] border-[#fed65b]/40'
+                }`}
+                title="Website Owner Admin Control Center & Supabase Database"
+                aria-label="Admin Portal"
+              >
+                <ShieldCheck className={`w-3.5 h-3.5 ${isAdminAuthenticated ? 'text-[#012d1d]' : 'text-[#fed65b]'}`} />
+                <span className="hidden sm:inline">Admin</span>
+                {isAdminAuthenticated && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" title="Active Admin Session" />
+                )}
+              </button>
 
               {/* Cart Button with Total Amount Badge */}
               <button

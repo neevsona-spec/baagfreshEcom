@@ -298,7 +298,8 @@ export const AdminPanel: React.FC = () => {
         }
       });
       if (res.ok) {
-        const data = await res.json();
+        const raw = await res.text();
+        const data = raw ? JSON.parse(raw) : {};
         if (data.posture) {
           setSecurityPosture({
             ...data.posture,
@@ -315,7 +316,8 @@ export const AdminPanel: React.FC = () => {
         // Fetch fallback public role policies
         const roleRes = await fetch('/api/auth/roles-policy');
         if (roleRes.ok) {
-          const roleData = await roleRes.json();
+          const rawRole = await roleRes.text();
+          const roleData = rawRole ? JSON.parse(rawRole) : {};
           if (Array.isArray(roleData.matrix)) {
             setRolePolicies(roleData.matrix);
           }

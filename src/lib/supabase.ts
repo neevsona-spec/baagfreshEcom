@@ -77,23 +77,43 @@ export async function queryCustomerTable<T = any>(
 }
 
 /**
+ * Safe Response Parser Helper
+ * Prevents "Unexpected end of JSON input" errors by defensively reading text before parsing.
+ */
+async function safeFetchJson<T = any>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+
+  const rawText = await response.text();
+  let data: any = {};
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    throw new Error(`Server returned invalid response (Status ${response.status})`);
+  }
+
+  if (!response.ok || (data && data.success === false)) {
+    const errMsg = data?.error || data?.message || `Request failed (HTTP ${response.status})`;
+    throw new Error(errMsg);
+  }
+
+  return data;
+}
+
+/**
  * Server-Side Proxy API Client for Secure Supabase Transactions
  * Bypasses public browser RLS restrictions securely through authenticated backend routes.
  */
 export async function apiCreateOrder(orderPayload: any): Promise<any> {
-  const response = await fetch('/api/orders', {
+  const data = await safeFetchJson<{ success: boolean; order: any }>('/api/orders', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(orderPayload),
   });
-
-  const data = await response.json();
-  if (!response.ok || !data.success) {
-    const errMsg = data?.error || `Failed to create order in Supabase (HTTP ${response.status})`;
-    throw new Error(errMsg);
-  }
 
   return data.order;
 }
@@ -116,15 +136,10 @@ export async function apiFetchOrders(params?: { phone?: string; adminEmail?: str
     headers['x-user-phone'] = params.phone;
   }
 
-  const response = await fetch(url.toString(), {
+  const data = await safeFetchJson<{ success: boolean; order?: any; orders?: any[] }>(url.toString(), {
     method: 'GET',
     headers,
   });
-
-  const data = await response.json();
-  if (!response.ok || !data.success) {
-    throw new Error(data?.error || 'Failed to fetch orders from Supabase.');
-  }
 
   if (data.order) {
     return [data.order];
@@ -134,37 +149,39 @@ export async function apiFetchOrders(params?: { phone?: string; adminEmail?: str
 }
 
 export async function apiUpdateOrderStatus(orderId: string, status: string, customNote?: string): Promise<any> {
-  const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/status`, {
+  const data = await safeFetchJson<{ success: boolean; order: any }>(`/api/orders/${encodeURIComponent(orderId)}/status`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({ status, note: customNote }),
   });
-
-  const data = await response.json();
-  if (!response.ok || !data.success) {
-    throw new Error(data?.error || `Failed to update order status (HTTP ${response.status})`);
-  }
 
   return data.order;
 }
 
-export async function apiCustomerAuth(params: { phone: string; name?: string; email?: string; address?: any }): Promise<{ customer: any; orders: any[] }> {
-  const response = await fetch('/api/customer/auth', {
+export async function apiCustomerAuth(params: { phone?: string; identifier?: string; name?: string; email?: string; address?: any }): Promise<{ customer: any; orders: any[]; user?: any }> {
+  const data = await safeFetchJson<{ success: boolean; customer: any; orders?: any[]; user?: any }>('/api/customer/auth', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(params),
   });
 
-  const data = await response.json();
-  if (!response.ok || !data.success) {
-    throw new Error(data?.error || 'Failed to authenticate customer with Supabase.');
-  }
+  return { customer: data.customer, orders: data.orders || [], user: data.user };
+}
 
-  return { customer: data.customer, orders: data.orders || [] };
+export async function apiRegisterCustomer(params: {
+  name: string;
+  identifier?: string;
+  emailOrPhone?: string;
+  phone?: string;
+  email?: string;
+  pin?: string;
+  password?: string;
+  address?: any;
+}): Promise<{ success: boolean; user: any; customer: any; message?: string }> {
+  const data = await safeFetchJson<{ success: boolean; user: any; customer: any; message?: string }>('/api/register', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+
+  return data;
 }
 
 

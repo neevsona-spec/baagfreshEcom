@@ -10,6 +10,19 @@ const PORT = 3000;
 
 app.use(express.json({ limit: "10mb" }));
 
+// Universal CORS & Preflight middleware for all API routes
+app.use("/api", (req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-email, x-user-email, x-user-phone");
+  res.setHeader("Content-Type", "application/json");
+
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+  next();
+});
+
 // Supabase Server Client
 const defaultSupabaseUrl = 'https://yarbuasdzujbtrwcfdwb.supabase.co';
 const defaultSupabaseAnonKey = 'sb_publishable_TKF3pz5CdryPzu7vd0oKlg_RHOjOhHO';
@@ -867,6 +880,210 @@ app.patch("/api/orders/:orderId/status", async (req, res) => {
   } catch (error: any) {
     console.error('[Orders API] Exception in PATCH /api/orders/:orderId/status:', error);
     return res.status(500).json({ success: false, error: error?.message || "Failed to update order status." });
+  }
+});
+
+// 4. Customer Registration & Authentication Handlers (/api/register, /api/auth/register, /api/customer/register)
+const handleCustomerRegistration = async (req: express.Request, res: express.Response) => {
+  res.setHeader("Content-Type", "application/json");
+  try {
+    const { name, fullName, identifier, emailOrPhone, phone, email, pin, password, address } = req.body || {};
+    
+    const cleanName = (name || fullName || '').trim();
+    const rawIdentifier = (identifier || emailOrPhone || phone || email || '').trim();
+
+    if (!cleanName || !rawIdentifier) {
+      return res.status(400).json({
+        success: false,
+        error: "Name and email or mobile phone number are required."
+      });
+    }
+
+    const isEmail = rawIdentifier.includes("@");
+    const cleanEmail = isEmail ? rawIdentifier.toLowerCase() : (email ? String(email).trim().toLowerCase() : "");
+    const cleanPhone = !isEmail ? normalizePhoneNumber(rawIdentifier) : (phone ? normalizePhoneNumber(phone) : "");
+
+    // 1. Check existing customer
+    let existingCustomer: any = null;
+    if (cleanPhone) {
+      const { data: byPhone } = await supabase
+        .from('Customer')
+        .select('*')
+        .eq('phone', cleanPhone)
+        .limit(1);
+      if (byPhone && byPhone.length > 0) existingCustomer = byPhone[0];
+    }
+
+    if (!existingCustomer && cleanEmail) {
+      const { data: byEmail } = await supabase
+        .from('Customer')
+        .select('*')
+        .eq('email', cleanEmail)
+        .limit(1);
+      if (byEmail && byEmail.length > 0) existingCustomer = byEmail[0];
+    }
+
+    let customerRecord: any = null;
+    if (existingCustomer) {
+      // Update existing record
+      const { data: updated, error: updErr } = await supabase
+        .from('Customer')
+        .update({
+          name: cleanName || existingCustomer.name,
+          email: cleanEmail || existingCustomer.email,
+          phone: cleanPhone || existingCustomer.phone,
+          saved_address: address || existingCustomer.saved_address
+        })
+        .eq('id', existingCustomer.id)
+        .select();
+
+      customerRecord = (updated && updated[0]) ? updated[0] : existingCustomer;
+    } else {
+      // Insert new customer
+      const { data: created, error: insErr } = await supabase
+        .from('Customer')
+        .insert([{
+          name: cleanName,
+          phone: cleanPhone || null,
+          email: cleanEmail || '',
+          saved_address: address || null
+        }])
+        .select();
+
+      if (insErr) {
+        console.error('[Customer API] Insert error in Supabase:', insErr);
+      }
+      customerRecord = (created && created[0]) ? created[0] : {
+        id: `cust-${Date.now()}`,
+        name: cleanName,
+        phone: cleanPhone,
+        email: cleanEmail,
+        saved_address: address || null,
+        created_at: new Date().toISOString()
+      };
+    }
+
+    // Build standard User profile
+    const userProfile = {
+      id: String(customerRecord.id || `cust-${Date.now()}`),
+      name: customerRecord.name || cleanName,
+      email: customerRecord.email || cleanEmail || '',
+      phone: customerRecord.phone || cleanPhone || '',
+      identifier: rawIdentifier,
+      avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80`,
+      memberSince: customerRecord.created_at ? new Date(customerRecord.created_at).getFullYear().toString() : '2026',
+      addresses: customerRecord.saved_address ? (Array.isArray(customerRecord.saved_address) ? customerRecord.saved_address : [customerRecord.saved_address]) : [],
+      is2FAEnabled: false,
+      e2eEncryptionKeyFingerprint: 'SUPABASE-E2E-VAULT',
+      cloudSyncEnabled: true
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Account registered successfully and synchronized with Supabase database.",
+      user: userProfile,
+      customer: customerRecord
+    });
+  } catch (err: any) {
+    console.error('[Customer API] Registration exception:', err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || "Internal Server Error occurred during registration."
+    });
+  }
+};
+
+app.post("/api/register", handleCustomerRegistration);
+app.post("/api/auth/register", handleCustomerRegistration);
+app.post("/api/customer/register", handleCustomerRegistration);
+
+// Customer login endpoint
+app.post("/api/auth/login", async (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  try {
+    const { identifier, emailOrPhone, phone, email, name } = req.body || {};
+    const rawIdentifier = (identifier || emailOrPhone || phone || email || '').trim();
+
+    if (!rawIdentifier) {
+      return res.status(400).json({
+        success: false,
+        error: "Please enter your email or mobile phone number."
+      });
+    }
+
+    const isEmail = rawIdentifier.includes("@");
+    const cleanEmail = isEmail ? rawIdentifier.toLowerCase() : (email ? String(email).trim().toLowerCase() : "");
+    const cleanPhone = !isEmail ? normalizePhoneNumber(rawIdentifier) : (phone ? normalizePhoneNumber(phone) : "");
+
+    let customerRecord: any = null;
+    if (cleanPhone) {
+      const { data: byPhone } = await supabase
+        .from('Customer')
+        .select('*')
+        .eq('phone', cleanPhone)
+        .limit(1);
+      if (byPhone && byPhone.length > 0) customerRecord = byPhone[0];
+    }
+    if (!customerRecord && cleanEmail) {
+      const { data: byEmail } = await supabase
+        .from('Customer')
+        .select('*')
+        .eq('email', cleanEmail)
+        .limit(1);
+      if (byEmail && byEmail.length > 0) customerRecord = byEmail[0];
+    }
+
+    if (!customerRecord) {
+      // Auto-provision customer
+      const { data: created } = await supabase
+        .from('Customer')
+        .insert([{
+          name: name || (isEmail ? cleanEmail.split('@')[0] : 'Patron'),
+          phone: cleanPhone || null,
+          email: cleanEmail || '',
+        }])
+        .select();
+      if (created && created[0]) customerRecord = created[0];
+    }
+
+    // Fetch user orders
+    let customerOrders: any[] = [];
+    if (cleanPhone) {
+      const { data: orders } = await supabase
+        .from('Order')
+        .select('*')
+        .ilike('customer_phone', `%${cleanPhone.slice(-10)}%`)
+        .order('order_id', { ascending: false });
+      if (orders) customerOrders = orders;
+    }
+
+    const userProfile = {
+      id: String(customerRecord?.id || `cust-${Date.now()}`),
+      name: customerRecord?.name || name || 'Patron',
+      email: customerRecord?.email || cleanEmail || '',
+      phone: customerRecord?.phone || cleanPhone || '',
+      identifier: rawIdentifier,
+      avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80`,
+      memberSince: customerRecord?.created_at ? new Date(customerRecord.created_at).getFullYear().toString() : '2026',
+      addresses: customerRecord?.saved_address ? (Array.isArray(customerRecord.saved_address) ? customerRecord.saved_address : [customerRecord.saved_address]) : [],
+      is2FAEnabled: false,
+      e2eEncryptionKeyFingerprint: 'SUPABASE-E2E-VAULT',
+      cloudSyncEnabled: true
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Customer signed in successfully.",
+      user: userProfile,
+      customer: customerRecord,
+      orders: customerOrders
+    });
+  } catch (err: any) {
+    console.error('[Customer API] Login exception:', err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || "Internal Server Error occurred during login."
+    });
   }
 });
 

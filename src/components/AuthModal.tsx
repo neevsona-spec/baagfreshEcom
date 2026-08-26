@@ -25,6 +25,7 @@ export const AuthModal: React.FC = () => {
     setUser,
     signOutUser,
     loginCustomerWithPhone,
+    registerCustomerAccount,
     showToast,
   } = useApp();
 
@@ -55,20 +56,40 @@ export const AuthModal: React.FC = () => {
 
     setLoading(true);
     setError(null);
+    setSuccessMessage(null);
 
     try {
-      const isEmail = cleanContact.includes('@');
-      const phone = isEmail ? '' : cleanContact;
-      const email = isEmail ? cleanContact : '';
-
-      const res = await loginCustomerWithPhone(cleanName || (isEmail ? cleanContact.split('@')[0] : 'Patron'), phone || cleanContact, email);
-      if (res.success) {
-        setIsAuthOpen(false);
+      if (mode === 'signup') {
+        // Direct Registration call with defensive JSON reading
+        const res = await registerCustomerAccount(cleanName, cleanContact, password);
+        if (res.success) {
+          setSuccessMessage('Account created successfully!');
+          setTimeout(() => {
+            setIsAuthOpen(false);
+          }, 600);
+        } else {
+          setError(res.error || 'Failed to create account. Please check your details and try again.');
+        }
       } else {
-        setError(res.error || 'Authentication failed. Please check your connection.');
+        // Sign In call
+        const isEmail = cleanContact.includes('@');
+        const phone = isEmail ? '' : cleanContact;
+        const email = isEmail ? cleanContact : '';
+
+        const res = await loginCustomerWithPhone(
+          cleanName || (isEmail ? cleanContact.split('@')[0] : 'Patron'),
+          phone || cleanContact,
+          email
+        );
+        if (res.success) {
+          setIsAuthOpen(false);
+        } else {
+          setError(res.error || 'Authentication failed. Please verify your contact details.');
+        }
       }
-    } catch (e: any) {
-      setError(e?.message || 'An error occurred during Supabase authentication.');
+    } catch (err: any) {
+      console.error('Auth submission error:', err);
+      setError(err?.message || 'Failed to process request. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -197,11 +197,17 @@ export const GeminiChatbot: React.FC = () => {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+      const raw = await response.text();
+      let data: any = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(`Server returned invalid response (Status ${response.status})`);
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || `Server returned ${response.status}`);
+      }
 
       const assistantMessage: ChatMessage = {
         id: `bot-${Date.now()}`,

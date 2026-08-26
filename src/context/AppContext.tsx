@@ -372,6 +372,7 @@ interface AppContextType {
   authLoading: boolean;
   signOutUser: () => Promise<void>;
   loginCustomerWithPhone: (name: string, phone: string, email?: string) => Promise<{ success: boolean; error?: string }>;
+  registerCustomerAccount: (name: string, emailOrPhone: string, password?: string) => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
 
   // User & Orders
   user: UserProfile | null;
@@ -1264,6 +1265,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Customer Registration (/api/register, with fallback)
+  const registerCustomerAccount = async (
+    name: string,
+    emailOrPhone: string,
+    password?: string
+  ): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
+    const cleanName = name.trim();
+    const cleanContact = emailOrPhone.trim();
+
+    if (!cleanName) {
+      return { success: false, error: 'Please enter your full name.' };
+    }
+    if (!cleanContact) {
+      return { success: false, error: 'Please enter your mobile phone number or email.' };
+    }
+
+    try {
+      const response = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: cleanName,
+          identifier: cleanContact,
+          emailOrPhone: cleanContact,
+          password: password || '',
+          pin: password || ''
+        }),
+      });
+
+      const rawText = await response.text();
+      let result: any = {};
+      try {
+        result = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        throw new Error(`Server returned invalid response (Status ${response.status})`);
+      }
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to create account. Please try again.');
+      }
+
+      const registeredProfile: UserProfile = result.user || {
+        id: String(result.customer?.id || `cust-${Date.now()}`),
+        name: cleanName,
+        email: cleanContact.includes('@') ? cleanContact : `${cleanContact}@baagfresh.in`,
+        phone: !cleanContact.includes('@') ? cleanContact : '',
+        avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80`,
+        memberSince: '2026',
+        addresses: [],
+        is2FAEnabled: false,
+        e2eEncryptionKeyFingerprint: 'SUPABASE-E2E-VAULT',
+        cloudSyncEnabled: true,
+      };
+
+      setUser(registeredProfile);
+      localStorage.setItem('baagfresh_active_user', JSON.stringify(registeredProfile));
+      LocalAuthManager.setSession(registeredProfile);
+
+      showToast(`Welcome to BAAGFRESH, ${registeredProfile.name}! Account created & synced.`, 'success');
+      return { success: true, user: registeredProfile };
+    } catch (err: any) {
+      console.warn('Backend register error, attempting local fallback:', err);
+      try {
+        const localRes = LocalAuthManager.register({
+          name: cleanName,
+          emailOrPhone: cleanContact,
+          password
+        });
+        if (localRes.success && localRes.user) {
+          setUser(localRes.user);
+          localStorage.setItem('baagfresh_active_user', JSON.stringify(localRes.user));
+          showToast(`Welcome, ${cleanName}! Account ready.`, 'success');
+          return { success: true, user: localRes.user };
+        }
+      } catch {}
+      return { success: false, error: err?.message || 'Failed to create customer account.' };
+    }
+  };
+
   const signOutUser = async () => {
     localStorage.removeItem('baagfresh_active_user');
     setIsAdminUser(false);
@@ -1732,6 +1812,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         authLoading,
         signOutUser,
         loginCustomerWithPhone,
+        registerCustomerAccount,
         user,
         setUser,
         updateUserAddresses,

@@ -188,18 +188,20 @@ export const Header: React.FC = () => {
 
           {/* Right Selectors & Toggles */}
           <div className="flex items-center gap-2.5 sm:gap-3">
-            {/* Admin Console Direct Link */}
-            {isAdminAuthenticated && (
-              <button
-                id="topbar-admin-portal-btn"
-                onClick={() => setIsAdminOpen(true)}
-                className="flex items-center gap-1 px-2 sm:px-2.5 py-0.5 rounded bg-[#163a2c] hover:bg-[#275943] text-xs text-[#fed65b] font-bold border border-[#fed65b]/40 transition-colors shadow-sm cursor-pointer"
-                title="Open Admin Portal"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-[#fed65b]" />
-                <span>Admin</span>
-              </button>
-            )}
+            {/* Website Owner Admin Console Button */}
+            <button
+              id="topbar-admin-portal-btn"
+              onClick={() => setIsAdminOpen(true)}
+              className="flex items-center gap-1 px-2.5 sm:px-3 py-0.5 rounded-full bg-[#163a2c] hover:bg-[#235843] text-xs text-[#fed65b] font-bold border border-[#fed65b]/50 transition-all shadow-sm cursor-pointer hover:scale-105"
+              title="Website Owner Admin Portal"
+              aria-label="Admin Control Panel"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-[#fed65b]" />
+              <span>Admin</span>
+              {isAdminAuthenticated && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" title="Admin Active" />
+              )}
+            </button>
 
             {/* Currency Selector */}
             <div className="relative">
@@ -948,18 +950,23 @@ export const Header: React.FC = () => {
                 >
                   {t('bulkOrders')} / Corporate Inquiry
                 </button>
-                {isAdminAuthenticated && (
-                  <button
-                    onClick={() => {
-                      setIsAdminOpen(true);
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full text-left py-2 px-3 bg-[#012d1d] text-[#fed65b] rounded-lg text-sm font-bold shadow-sm flex items-center justify-between cursor-pointer"
-                  >
-                    <span>Admin Control Center</span>
+                <button
+                  onClick={() => {
+                    setIsAdminOpen(true);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full text-left py-2 px-3 bg-[#012d1d] text-[#fed65b] rounded-lg text-sm font-bold shadow-sm flex items-center justify-between cursor-pointer border border-[#fed65b]/40"
+                >
+                  <span className="flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-[#fed65b]" />
-                  </button>
-                )}
+                    <span>Admin Control Center (Owner)</span>
+                  </span>
+                  {isAdminAuthenticated ? (
+                    <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-bold">Active</span>
+                  ) : (
+                    <span className="text-[10px] bg-[#fed65b] text-[#012d1d] px-2 py-0.5 rounded-full font-bold">Owner</span>
+                  )}
+                </button>
               </div>
             </div>
 

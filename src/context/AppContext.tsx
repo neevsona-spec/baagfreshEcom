@@ -42,7 +42,15 @@ import {
   ADMIN_EMAILS
 } from '../lib/firebase';
 import { LocalAuthManager } from '../services/LocalAuthManager';
-import { supabase, queryOrderTable, queryCustomerTable } from '../lib/supabase';
+import { 
+  supabase, 
+  queryOrderTable, 
+  queryCustomerTable,
+  apiCreateOrder,
+  apiFetchOrders,
+  apiUpdateOrderStatus,
+  apiCustomerAuth
+} from '../lib/supabase';
 
 export function generateTrackingSteps(status: string): TrackingStep[] {
   const norm = (status || '').toLowerCase();
@@ -119,15 +127,60 @@ export function mapSupabaseOrderToOrder(row: any): Order {
 
   let parsedItems: CartItem[] = [];
   if (row.items) {
+    let rawList: any[] = [];
     if (typeof row.items === 'string') {
       try {
-        parsedItems = JSON.parse(row.items);
+        rawList = JSON.parse(row.items);
       } catch (e) {
         console.warn('Failed to parse items JSON:', e);
       }
     } else if (Array.isArray(row.items)) {
-      parsedItems = row.items;
+      rawList = row.items;
     }
+
+    parsedItems = rawList.map((it: any) => {
+      let matchedProduct: Product | undefined = undefined;
+      if (it.product && typeof it.product === 'object' && it.product.id) {
+        matchedProduct = it.product;
+      } else {
+        const prodId = it.productId || it.id || '';
+        matchedProduct = PRODUCTS.find((p) => p.id === prodId);
+      }
+
+      if (!matchedProduct) {
+        matchedProduct = {
+          id: it.id || 'custom-item',
+          name: it.name || it.title || 'Premium Harvest Item',
+          hindiName: '',
+          category: 'dry-fruits',
+          origin: 'Varanasi',
+          description: '',
+          longDescription: '',
+          image: it.image || 'https://images.unsplash.com/photo-1508061253366-f7da158b6d46?auto=format&fit=crop&w=600&q=80',
+          gallery: [],
+          basePrice: Number(it.price || 0),
+          originalPrice: Number(it.price || 0),
+          rating: 5,
+          reviewsCount: 1,
+          inStock: true,
+          isOrganic: true,
+          packOptions: [],
+          nutrition: { calories: '', protein: '', healthyFats: '', carbs: '', dietaryFiber: '', keyVitamins: '' },
+          harvestSeason: '',
+          grading: '',
+          benefits: []
+        };
+      }
+
+      return {
+        id: it.id || `${matchedProduct.id}-${it.selectedWeight || 'pack'}`,
+        product: matchedProduct,
+        selectedWeight: it.selectedWeight || 'Standard',
+        quantity: Number(it.quantity || 1),
+        price: Number(it.price || matchedProduct.basePrice || 0),
+        originalPrice: Number(it.originalPrice || matchedProduct.originalPrice || matchedProduct.basePrice || 0)
+      };
+    });
   }
 
   const rawStatus = row.status || 'confirmed';
@@ -161,7 +214,7 @@ export function mapSupabaseOrderToOrder(row: any): Order {
     id: orderId,
     orderNumber: orderId,
     date: formattedDate,
-    items: Array.isArray(parsedItems) ? parsedItems : [],
+    items: parsedItems,
     subtotal: Number(row.subtotal || 0),
     discount: 0,
     shippingFee: Number(row.shipping_fee || 0),
@@ -1066,24 +1119,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const fetchOrdersFromSupabase = async (phoneFilter?: string) => {
     try {
       const effectivePhone = phoneFilter || user?.phone;
-      console.log('Fetching orders. isAdminUser:', isAdminUser, 'isAdminAuthenticated:', isAdminAuthenticated, 'Phone:', effectivePhone);
-      const { data, error } = await queryOrderTable(async (tableName) => {
-        let query = supabase.from(tableName).select('*');
-        if (effectivePhone && !isAdminUser && !isAdminAuthenticated) {
-          query = query.eq('customer_phone', effectivePhone);
-        }
-        return await query;
-      });
-
-      if (error) {
-        console.error('Error fetching orders from Supabase:', error);
-        return;
+      console.log('Fetching live orders from Supabase. isAdminUser:', isAdminUser, 'isAdminAuthenticated:', isAdminAuthenticated, 'Phone:', effectivePhone);
+      
+      let rawOrders: any[] = [];
+      if (isAdminUser || isAdminAuthenticated) {
+        rawOrders = await apiFetchOrders({ adminEmail: user?.email || 'admin@baagfresh.in' });
+      } else if (effectivePhone) {
+        rawOrders = await apiFetchOrders({ phone: effectivePhone });
+      } else {
+        rawOrders = [];
       }
 
-      console.log('Fetched orders data count:', data?.length);
+      console.log('[Supabase Sync] Fetched orders count:', rawOrders?.length);
 
-      if (data && Array.isArray(data)) {
-        const sortedData = [...data].sort((a: any, b: any) => {
+      if (rawOrders && Array.isArray(rawOrders)) {
+        const sortedData = [...rawOrders].sort((a: any, b: any) => {
           const timeA = new Date(a.created_at || a.createdAt || a.date || a.timestamp || a.order_date || 0).getTime() || Number(a.id) || 0;
           const timeB = new Date(b.created_at || b.createdAt || b.date || b.timestamp || b.order_date || 0).getTime() || Number(b.id) || 0;
           return timeB - timeA;
@@ -1140,107 +1190,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      // 1. Look up or upsert customer in Supabase
-      const { data: existingCust } = await queryCustomerTable(async (tableName) => {
-        return await supabase.from(tableName).select('*').eq('phone', cleanPhone);
+      const { customer, orders: customerOrders } = await apiCustomerAuth({
+        phone: cleanPhone,
+        name: cleanName,
+        email: cleanEmail,
       });
 
-      let customerProfile: UserProfile;
-
-      if (existingCust && existingCust.length > 0) {
-        const cust = existingCust[0];
-        let parsedAddress: Address[] = [];
-        if (cust.saved_address) {
-          if (Array.isArray(cust.saved_address)) parsedAddress = cust.saved_address;
-          else if (typeof cust.saved_address === 'object') parsedAddress = [cust.saved_address];
-          else if (typeof cust.saved_address === 'string') {
-            try {
-              const p = JSON.parse(cust.saved_address);
-              parsedAddress = Array.isArray(p) ? p : [p];
-            } catch {}
-          }
+      let parsedAddress: Address[] = [];
+      if (customer?.saved_address) {
+        if (Array.isArray(customer.saved_address)) parsedAddress = customer.saved_address;
+        else if (typeof customer.saved_address === 'object') parsedAddress = [customer.saved_address];
+        else if (typeof customer.saved_address === 'string') {
+          try {
+            const p = JSON.parse(customer.saved_address);
+            parsedAddress = Array.isArray(p) ? p : [p];
+          } catch {}
         }
-
-        customerProfile = {
-          id: String(cust.id || `cust-${Date.now()}`),
-          name: cleanName || cust.name || 'Patron',
-          email: cleanEmail || cust.email || '',
-          phone: cleanPhone,
-          avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80`,
-          memberSince: cust.created_at ? new Date(cust.created_at).getFullYear().toString() : '2026',
-          addresses: parsedAddress,
-          is2FAEnabled: false,
-          e2eEncryptionKeyFingerprint: 'SUPABASE-E2E-VAULT',
-          cloudSyncEnabled: true,
-        };
-
-        if (cleanName && cleanName !== cust.name) {
-          await queryCustomerTable(async (tableName) => {
-            return await supabase
-              .from(tableName)
-              .update({ name: cleanName, email: cleanEmail || cust.email })
-              .eq('phone', cleanPhone);
-          });
-        }
-      } else {
-        const { data: newCust, error: insertErr } = await queryCustomerTable(async (tableName) => {
-          return await supabase
-            .from(tableName)
-            .insert([{
-              name: cleanName || 'Patron',
-              phone: cleanPhone,
-              email: cleanEmail || '',
-              saved_address: null
-            }])
-            .select();
-        });
-
-        if (insertErr) {
-          console.warn('Supabase customer insert notice:', insertErr);
-        }
-
-        customerProfile = {
-          id: newCust && newCust[0]?.id ? String(newCust[0].id) : `cust-${Date.now()}`,
-          name: cleanName || 'Patron',
-          email: cleanEmail || '',
-          phone: cleanPhone,
-          avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80`,
-          memberSince: new Date().getFullYear().toString(),
-          addresses: [],
-          is2FAEnabled: false,
-          e2eEncryptionKeyFingerprint: 'SUPABASE-E2E-VAULT',
-          cloudSyncEnabled: true,
-        };
       }
+
+      const customerProfile: UserProfile = {
+        id: String(customer?.id || `cust-${Date.now()}`),
+        name: cleanName || customer?.name || 'Patron',
+        email: cleanEmail || customer?.email || '',
+        phone: cleanPhone,
+        avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80`,
+        memberSince: customer?.created_at ? new Date(customer.created_at).getFullYear().toString() : '2026',
+        addresses: parsedAddress,
+        is2FAEnabled: false,
+        e2eEncryptionKeyFingerprint: 'SUPABASE-E2E-VAULT',
+        cloudSyncEnabled: true,
+      };
 
       setUser(customerProfile);
       localStorage.setItem('baagfresh_active_user', JSON.stringify(customerProfile));
 
-      // 2. Fetch customer's orders from Supabase
-      const { data: orderData, error: ordersErr } = await queryOrderTable(async (tableName) => {
-        return await supabase
-          .from(tableName)
-          .select('*')
-          .eq('customer_phone', cleanPhone);
-      });
-
-      if (ordersErr) {
-        console.error('Error loading customer orders from Supabase:', ordersErr);
-      } else if (orderData && Array.isArray(orderData)) {
-        const sortedOrders = [...orderData].sort((a: any, b: any) => {
+      if (customerOrders && Array.isArray(customerOrders)) {
+        const sorted = [...customerOrders].sort((a: any, b: any) => {
           const timeA = new Date(a.created_at || a.createdAt || a.date || a.timestamp || a.order_date || 0).getTime() || Number(a.id) || 0;
           const timeB = new Date(b.created_at || b.createdAt || b.date || b.timestamp || b.order_date || 0).getTime() || Number(b.id) || 0;
           return timeB - timeA;
         });
-        const userOrders = sortedOrders.map(mapSupabaseOrderToOrder);
+        const userOrders = sorted.map(mapSupabaseOrderToOrder);
         setOrders(userOrders);
       }
 
-      showToast(`Welcome ${customerProfile.name}! Signed in with phone ${cleanPhone}`, 'success');
+      showToast(`Welcome back, ${customerProfile.name}! Synced with Supabase.`, 'success');
       return { success: true };
     } catch (err: any) {
-      console.error('Supabase customer sign-in error:', err);
-      return { success: false, error: err?.message || 'Failed to authenticate with Supabase' };
+      console.error('Customer login error:', err);
+      return { success: false, error: err?.message || 'Failed to authenticate with Supabase.' };
     }
   };
 
@@ -1485,123 +1483,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Orders (Pure Supabase Database Backend Integration)
   const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 'date' | 'status' | 'trackingSteps' | 'eta'>): Promise<Order> => {
+    if (!orderData.items || orderData.items.length === 0) {
+      throw new Error('Cannot place order: Your cart is empty.');
+    }
+
     const shippingFee = orderData.subtotal >= 999 ? 0 : 99;
     const finalGrandTotal = Number(orderData.subtotal) - Number(orderData.discount || 0) + Number(shippingFee) + Number(orderData.tax || 0);
     const generatedOrderId = 'ORD-' + Date.now();
-    const custName = orderData.customerName || orderData.shippingAddress?.fullName || 'Patron';
-    const custPhone = String(orderData.customerPhone || orderData.shippingAddress?.phone || '');
+    const custName = (orderData.customerName || orderData.shippingAddress?.fullName || 'Patron').trim();
+    const custPhone = String(orderData.customerPhone || orderData.shippingAddress?.phone || '').trim();
 
-    const newOrder: Order = {
-      ...orderData,
-      id: generatedOrderId,
-      orderNumber: generatedOrderId,
+    if (!custPhone) {
+      throw new Error('Valid customer contact phone number is required to confirm your order.');
+    }
+
+    const orderPayload = {
+      orderId: generatedOrderId,
       customerName: custName,
       customerPhone: custPhone,
+      customerEmail: user?.email || '',
+      shippingAddress: orderData.shippingAddress,
       items: orderData.items,
       subtotal: Number(orderData.subtotal),
       shippingFee: Number(shippingFee),
+      discount: Number(orderData.discount || 0),
+      tax: Number(orderData.tax || 0),
       total: Number(finalGrandTotal),
-      paymentMethod: orderData.paymentMethod || 'cod',
-      date: new Date().toISOString(),
-      status: "confirmed",
-      eta: 'Estimated in 2-3 business days',
-      trackingSteps: generateTrackingSteps('Order Confirmed')
+      paymentMethod: orderData.paymentMethod || 'COD',
+      paymentStatus: orderData.paymentStatus || (orderData.paymentMethod === 'cod' ? 'cod_pending' : 'paid'),
+      idempotencyKey: `${custPhone}_${Math.round(finalGrandTotal)}_${orderData.items.map(i => i.id).sort().join('-')}`
     };
 
-    // 1. Direct Insert into Supabase `Order` / `orders` table
-    try {
-      const { data, error } = await queryOrderTable(async (tableName) => {
-        return await supabase
-          .from(tableName)
-          .insert([{
-            order_id: generatedOrderId,
-            customer_name: custName,
-            customer_phone: custPhone,
-            shipping_address: orderData.shippingAddress,
-            items: orderData.items,
-            subtotal: Number(orderData.subtotal),
-            shipping_fee: Number(shippingFee),
-            total_amount: Number(finalGrandTotal),
-            payment_method: orderData.paymentMethod || 'COD',
-            status: 'Order Confirmed'
-          }])
-          .select();
-      });
+    // 1. Save to Supabase (Enforced: will throw error if save fails)
+    const savedRow = await apiCreateOrder(orderPayload);
+    const mappedOrder = mapSupabaseOrderToOrder(savedRow);
 
-      if (error) {
-        console.error('Supabase Error:', error);
-      } else {
-        console.log('Order successfully inserted into Supabase:', data);
-      }
-    } catch (err: any) {
-      console.error('Supabase direct insert exception:', err);
-    }
+    // 2. Update local state
+    setOrders((prev) => [mappedOrder, ...prev.filter(o => o.id !== mappedOrder.id)]);
 
-    // 2. Direct Upsert into Supabase `Customer` / `customers` table if phone exists
-    if (custPhone) {
-      try {
-        const { data: existingCust } = await queryCustomerTable(async (tableName) => {
-          return await supabase
-            .from(tableName)
-            .select('id, phone')
-            .eq('phone', custPhone);
-        });
-
-        if (existingCust && existingCust.length > 0) {
-          await queryCustomerTable(async (tableName) => {
-            return await supabase
-              .from(tableName)
-              .update({
-                name: custName,
-                saved_address: orderData.shippingAddress
-              })
-              .eq('phone', custPhone);
-          });
-        } else {
-          await queryCustomerTable(async (tableName) => {
-            return await supabase
-              .from(tableName)
-              .insert([{
-                name: custName,
-                phone: custPhone,
-                email: user?.email || '',
-                saved_address: orderData.shippingAddress
-              }]);
-          });
-        }
-      } catch (custErr) {
-        console.warn('Customer upsert to Supabase notice:', custErr);
-      }
-    }
-
-    setOrders((prev) => [newOrder, ...prev]);
+    // 3. Clear cart ONLY after successful Supabase persistence
     clearCart();
+
+    // 4. Notifications
     addNotification(
-      `Order ${newOrder.orderNumber} Confirmed!`,
-      `Thank you for your order of ${formatPrice(newOrder.total)}. Your order is saved in the Supabase database.`,
+      `Order ${mappedOrder.orderNumber} Confirmed!`,
+      `Thank you for your order of ${formatPrice(mappedOrder.total)}. Your order is saved in the Supabase database.`,
       'order'
     );
-    showToast(`Order ${newOrder.orderNumber} placed & stored in Supabase!`, 'success');
-    return newOrder;
+    showToast(`Order ${mappedOrder.orderNumber} placed & saved in Supabase!`, 'success');
+
+    return mappedOrder;
   };
 
   const cancelOrder = async (orderId: string) => {
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === orderId ? { ...o, status: 'confirmed' } : o
-      )
-    );
     try {
-      await queryOrderTable(async (tableName) => {
-        return await supabase
-          .from(tableName)
-          .update({ status: 'Cancelled' })
-          .or(`order_id.eq.${orderId},id.eq.${orderId}`);
-      });
-    } catch (err) {
-      console.error('Failed to update order status in Supabase:', err);
+      await apiUpdateOrderStatus(orderId, 'Cancelled');
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId || o.orderNumber === orderId ? { ...o, status: 'confirmed' } : o
+        )
+      );
+      showToast(`Order #${orderId} cancellation updated in Supabase`, 'info');
+    } catch (err: any) {
+      console.error('Failed to cancel order in Supabase:', err);
+      showToast('Failed to cancel order in database', 'error');
     }
-    showToast('Order cancellation request registered', 'info');
   };
 
   // Admin update order status directly in Supabase
@@ -1653,20 +1599,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     try {
-      const { data, error } = await queryOrderTable(async (tableName) => {
-        return await supabase
-          .from(tableName)
-          .update({ status: dbStatus })
-          .or(`order_id.eq.${orderId},id.eq.${orderId}`);
-      });
-
-      if (error) {
-        console.error('Supabase Error:', error);
-      } else {
-        showToast(`Order status updated to "${dbStatus}" in Supabase!`, 'success');
-      }
+      await apiUpdateOrderStatus(orderId, dbStatus, customNote);
+      showToast(`Order status updated to "${dbStatus}" in Supabase!`, 'success');
     } catch (err: any) {
       console.error('Supabase status update exception:', err);
+      showToast(`Failed to update order status in Supabase: ${err?.message || ''}`, 'error');
     }
   };
 

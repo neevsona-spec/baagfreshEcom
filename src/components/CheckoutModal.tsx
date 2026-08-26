@@ -12,7 +12,8 @@ import {
   ArrowLeft,
   Printer,
   Sparkles,
-  Mail
+  Mail,
+  AlertCircle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Address, Order, PaymentMethod } from '../types';
@@ -94,6 +95,8 @@ export const CheckoutModal: React.FC = () => {
   // Success order state
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
   const [transactionInfo, setTransactionInfo] = useState<{ txnId: string; bankRef: string } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   if (!isCheckoutOpen) return null;
 
@@ -122,6 +125,7 @@ export const CheckoutModal: React.FC = () => {
       return;
     }
     localStorage.setItem('baagfresh_saved_address', JSON.stringify(formData));
+    setSubmitError(null);
     setStep('payment');
   };
 
@@ -129,6 +133,10 @@ export const CheckoutModal: React.FC = () => {
     method: PaymentMethod,
     txnDetails?: { txnId: string; bankRef: string }
   ) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+
     if (txnDetails) {
       setTransactionInfo(txnDetails);
     }
@@ -140,34 +148,42 @@ export const CheckoutModal: React.FC = () => {
       isDefault: false,
     };
 
-    // Save Address
-    if (user) {
-      // Add or Update address
-      const newAddresses = user.addresses.filter(a => a.id !== shippingAddress.id);
-      newAddresses.push(shippingAddress);
-      await updateUserAddresses(newAddresses);
-    } else {
-      localStorage.setItem('baagfresh_guest_address', JSON.stringify(shippingAddress));
+    try {
+      // Save Address
+      if (user) {
+        // Add or Update address
+        const newAddresses = user.addresses.filter(a => a.id !== shippingAddress.id);
+        newAddresses.push(shippingAddress);
+        await updateUserAddresses(newAddresses);
+      } else {
+        localStorage.setItem('baagfresh_guest_address', JSON.stringify(shippingAddress));
+      }
+
+      // CRITICAL: A customer order must NEVER be shown as “successful” unless the order has actually been saved successfully in Supabase.
+      const newOrder = await createOrder({
+        items: [...cart],
+        subtotal: cartSubtotal,
+        discount: cartDiscount,
+        promoCode: appliedPromo || undefined,
+        shippingFee: cartShipping + (deliverySpeed === 'express' ? 150 : 0),
+        tax: cartTax,
+        total: finalTotal,
+        currency,
+        shippingAddress,
+        customerName: formData.fullName,
+        customerPhone: formData.phone,
+        paymentMethod: method,
+        paymentStatus: method === 'cod' ? 'cod_pending' : 'paid',
+      });
+
+      setCompletedOrder(newOrder);
+      setStep('success');
+    } catch (err: any) {
+      console.error('[Checkout] Order placement failed:', err);
+      setSubmitError(err?.message || 'Could not record order in Supabase database. Please check your network and try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const newOrder = await createOrder({
-      items: [...cart],
-      subtotal: cartSubtotal,
-      discount: cartDiscount,
-      promoCode: appliedPromo || undefined,
-      shippingFee: cartShipping + (deliverySpeed === 'express' ? 150 : 0),
-      tax: cartTax,
-      total: finalTotal,
-      currency,
-      shippingAddress,
-      customerName: formData.fullName,
-      customerPhone: formData.phone,
-      paymentMethod: method,
-      paymentStatus: method === 'cod' ? 'cod_pending' : 'paid',
-    });
-
-    setCompletedOrder(newOrder);
-    setStep('success');
   };
 
   return (
@@ -489,14 +505,32 @@ export const CheckoutModal: React.FC = () => {
 
           {/* STEP 2: Payment */}
           {step === 'payment' && (
-            <PaymentGateway
-              amount={finalTotal}
-              receiverPhone={formData.phone}
-              receiverCity={formData.city}
-              receiverPincode={formData.pincode}
-              onPaymentSuccess={handlePaymentSuccess}
-              onCancel={() => setStep('details')}
-            />
+            <div className="relative">
+              {submitError && (
+                <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                  <span>{submitError}</span>
+                </div>
+              )}
+              {isSubmitting && (
+                <div className="absolute inset-0 z-20 bg-white/80 dark:bg-[#0f241a]/80 backdrop-blur-xs flex flex-col items-center justify-center p-6 rounded-2xl">
+                  <div className="w-10 h-10 border-3 border-[#012d1d] border-t-[#fed65b] dark:border-[#fed65b] dark:border-t-transparent rounded-full animate-spin mb-3"></div>
+                  <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">Saving order to Supabase database...</p>
+                  <p className="text-xs text-slate-500 mt-1">Verifying encrypted transaction & inventory...</p>
+                </div>
+              )}
+              <PaymentGateway
+                amount={finalTotal}
+                receiverPhone={formData.phone}
+                receiverCity={formData.city}
+                receiverPincode={formData.pincode}
+                onPaymentSuccess={handlePaymentSuccess}
+                onCancel={() => {
+                  setSubmitError(null);
+                  setStep('details');
+                }}
+              />
+            </div>
           )}
 
           {/* STEP 3: Order Placed Success Confirmation */}

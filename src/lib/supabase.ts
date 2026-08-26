@@ -76,3 +76,95 @@ export async function queryCustomerTable<T = any>(
   return lastRes;
 }
 
+/**
+ * Server-Side Proxy API Client for Secure Supabase Transactions
+ * Bypasses public browser RLS restrictions securely through authenticated backend routes.
+ */
+export async function apiCreateOrder(orderPayload: any): Promise<any> {
+  const response = await fetch('/api/orders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(orderPayload),
+  });
+
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    const errMsg = data?.error || `Failed to create order in Supabase (HTTP ${response.status})`;
+    throw new Error(errMsg);
+  }
+
+  return data.order;
+}
+
+export async function apiFetchOrders(params?: { phone?: string; adminEmail?: string; orderId?: string }): Promise<any[]> {
+  const url = new URL('/api/orders', window.location.origin);
+  if (params?.phone) url.searchParams.set('phone', params.phone);
+  if (params?.orderId) url.searchParams.set('orderId', params.orderId);
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (params?.adminEmail) {
+    headers['x-admin-email'] = params.adminEmail;
+    headers['Authorization'] = `Bearer ${params.adminEmail}`;
+  }
+
+  if (params?.phone) {
+    headers['x-user-phone'] = params.phone;
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers,
+  });
+
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data?.error || 'Failed to fetch orders from Supabase.');
+  }
+
+  if (data.order) {
+    return [data.order];
+  }
+
+  return data.orders || [];
+}
+
+export async function apiUpdateOrderStatus(orderId: string, status: string, customNote?: string): Promise<any> {
+  const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/status`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status, note: customNote }),
+  });
+
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data?.error || `Failed to update order status (HTTP ${response.status})`);
+  }
+
+  return data.order;
+}
+
+export async function apiCustomerAuth(params: { phone: string; name?: string; email?: string; address?: any }): Promise<{ customer: any; orders: any[] }> {
+  const response = await fetch('/api/customer/auth', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+  });
+
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data?.error || 'Failed to authenticate customer with Supabase.');
+  }
+
+  return { customer: data.customer, orders: data.orders || [] };
+}
+
+

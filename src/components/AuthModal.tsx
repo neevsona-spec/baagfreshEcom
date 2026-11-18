@@ -68,7 +68,9 @@ export const AuthModal: React.FC = () => {
             setIsAuthOpen(false);
           }, 600);
         } else {
-          setError(res.error || 'Failed to create account. Please check your details and try again.');
+          const errorMessage = res.error || 'Failed to create account. Please check your details and try again.';
+          setError(errorMessage);
+          showToast(errorMessage, 'error');
         }
       } else {
         // Sign In call
@@ -84,12 +86,16 @@ export const AuthModal: React.FC = () => {
         if (res.success) {
           setIsAuthOpen(false);
         } else {
-          setError(res.error || 'Authentication failed. Please verify your contact details.');
+          const errorMessage = res.error || 'Authentication failed. Please verify your contact details.';
+          setError(errorMessage);
+          showToast(errorMessage, 'error');
         }
       }
     } catch (err: any) {
       console.error('Auth submission error:', err);
-      setError(err?.message || 'Failed to process request. Please try again.');
+      const errorMessage = err?.message || 'Failed to process request. Please try again.';
+      setError(errorMessage);
+      showToast(errorMessage, 'error');
     } finally {
       setLoading(false);
     }

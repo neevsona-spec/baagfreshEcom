@@ -42,7 +42,10 @@ import {
   ExternalLink,
   FileSpreadsheet,
   Upload,
-  Download
+  Download,
+  MessageCircle,
+  Copy,
+  ListChecks
 } from 'lucide-react';
 import { BulkCatalogManager } from './BulkCatalogManager';
 import { useApp } from '../context/AppContext';
@@ -51,6 +54,13 @@ import { CATEGORIES } from '../data/products';
 import { resolveProductImage } from '../utils/productImageResolver';
 import { ADMIN_EMAILS, supabase } from '../lib/supabase';
 import { authLogger } from '../utils/authLogger';
+import {
+  buildWhatsAppClickToChatUrl,
+  formatSingleOrderListTemplate,
+  formatCustomerConfirmationWhatsAppTemplate,
+  formatMultiOrderListTemplate,
+  WhatsAppOrderInput
+} from '../lib/whatsappTemplates';
 
 export const AdminPanel: React.FC = () => {
   const {
@@ -1942,7 +1952,7 @@ export const AdminPanel: React.FC = () => {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         onClick={async () => {
                           await fetchOrdersFromSupabase();
@@ -1954,6 +1964,72 @@ export const AdminPanel: React.FC = () => {
                         <RefreshCw className="w-3.5 h-3.5" />
                         <span>Sync Supabase</span>
                       </button>
+
+                      {orders.length > 0 && (() => {
+                        const filteredOrders = orders.filter((o) => {
+                          const matchesFilter = orderStatusFilter === 'all' || o.status === orderStatusFilter;
+                          const matchesSearch =
+                            o.orderNumber.toLowerCase().includes(orderSearch.toLowerCase()) ||
+                            o.shippingAddress?.fullName?.toLowerCase().includes(orderSearch.toLowerCase());
+                          return matchesFilter && matchesSearch;
+                        });
+                        const listInputs: WhatsAppOrderInput[] = filteredOrders.map((ord) => ({
+                          orderId: ord.id,
+                          orderNumber: ord.orderNumber,
+                          date: ord.date,
+                          status: ord.status,
+                          customerName: ord.customerName || ord.shippingAddress?.fullName || 'Patron',
+                          customerPhone: ord.customerPhone || ord.shippingAddress?.phone || '',
+                          customerEmail: ord.customerEmail || ord.shippingAddress?.email,
+                          shippingAddress: ord.shippingAddress,
+                          items: ord.items.map((it) => ({
+                            name: it.product.name,
+                            weight: it.selectedWeight,
+                            quantity: it.quantity,
+                            price: it.price,
+                          })),
+                          subtotal: ord.subtotal,
+                          discount: ord.discount,
+                          shippingFee: ord.shippingFee,
+                          tax: ord.tax,
+                          total: ord.total,
+                          paymentMethod: ord.paymentMethod,
+                          paymentStatus: ord.paymentStatus,
+                        }));
+                        const fullLedgerTemplate = formatMultiOrderListTemplate(
+                          listInputs,
+                          `BAAGFRESH — ${orderStatusFilter === 'all' ? 'ALL ORDERS' : orderStatusFilter.toUpperCase()} LIST`
+                        );
+                        const officialWa = storeSettings.whatsappNumber || storeSettings.supportPhone || '+91 87076 71319';
+                        const ledgerWaUrl = buildWhatsAppClickToChatUrl(officialWa, fullLedgerTemplate);
+
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(fullLedgerTemplate);
+                                showToast(`Copied List Template for ${filteredOrders.length} order(s)!`, 'success');
+                              }}
+                              className="px-3 py-2 bg-[#FAF3E0] dark:bg-[#162f22] text-[#012d1d] dark:text-[#fed65b] border border-amber-300 dark:border-[#275943] rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-amber-100/70"
+                              title="Copy formatted List Template of all displayed orders"
+                            >
+                              <ListChecks className="w-3.5 h-3.5 text-[#c79a1f]" />
+                              <span>Copy Orders List ({filteredOrders.length})</span>
+                            </button>
+                            <a
+                              href={ledgerWaUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-2 bg-[#25D366] hover:bg-[#1ebe5d] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors"
+                              title={`Send full order list directly to Official WhatsApp (${officialWa})`}
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              <span>Send List to My WhatsApp</span>
+                            </a>
+                          </>
+                        );
+                      })()}
 
                       <select
                         value={orderStatusFilter}
@@ -1968,6 +2044,30 @@ export const AdminPanel: React.FC = () => {
                         <option value="delivered">Delivered</option>
                       </select>
                     </div>
+                  </div>
+
+                  {/* Official WhatsApp Auto-Receive Status Banner */}
+                  <div className="p-3.5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-[#25D366] text-white flex items-center justify-center shrink-0">
+                        <MessageCircle className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-emerald-950 dark:text-emerald-200">
+                          Official WhatsApp Order Receiver: {storeSettings.whatsappNumber || storeSettings.supportPhone || '+91 87076 71319'}
+                        </div>
+                        <div className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                          Every order automatically generates a formatted List Template for direct WhatsApp confirmation &amp; admin ledger dispatch.
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('settings')}
+                      className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#162f22] border border-emerald-300 dark:border-[#275943] text-emerald-900 dark:text-emerald-200 font-bold text-[11px] hover:bg-emerald-100/50 self-start sm:self-center"
+                    >
+                      Configure WhatsApp Number
+                    </button>
                   </div>
 
                   {/* Orders List */}
@@ -2133,14 +2233,75 @@ export const AdminPanel: React.FC = () => {
                                   </button>
                                 </div>
 
-                                <button
-                                  onClick={() => openGmailInvoice(ord)}
-                                  className="px-3 py-1.5 bg-[#FAF3E0] dark:bg-[#162f22] hover:bg-[#fed65b]/20 text-[#012d1d] dark:text-[#fed65b] border border-amber-300 dark:border-[#275943] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
-                                  title="Send official HTML invoice via Gmail"
-                                >
-                                  <Mail className="w-3.5 h-3.5 text-[#c79a1f]" />
-                                  <span>Dispatch Invoice via Gmail</span>
-                                </button>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {(() => {
+                                    const ordInput: WhatsAppOrderInput = {
+                                      orderId: ord.id,
+                                      orderNumber: ord.orderNumber,
+                                      date: ord.date,
+                                      status: ord.status,
+                                      customerName: ord.customerName || ord.shippingAddress?.fullName || 'Patron',
+                                      customerPhone: ord.customerPhone || ord.shippingAddress?.phone || '',
+                                      customerEmail: ord.customerEmail || ord.shippingAddress?.email,
+                                      shippingAddress: ord.shippingAddress,
+                                      items: ord.items.map((it) => ({
+                                        name: it.product.name,
+                                        weight: it.selectedWeight,
+                                        quantity: it.quantity,
+                                        price: it.price,
+                                      })),
+                                      subtotal: ord.subtotal,
+                                      discount: ord.discount,
+                                      shippingFee: ord.shippingFee,
+                                      tax: ord.tax,
+                                      total: ord.total,
+                                      paymentMethod: ord.paymentMethod,
+                                      paymentStatus: ord.paymentStatus,
+                                    };
+                                    const orderListText = formatSingleOrderListTemplate(ordInput);
+                                    const customerConfirmText = formatCustomerConfirmationWhatsAppTemplate(ordInput);
+                                    const customerWaUrl = buildWhatsAppClickToChatUrl(
+                                      ord.customerPhone || ord.shippingAddress?.phone || '',
+                                      customerConfirmText
+                                    );
+
+                                    return (
+                                      <>
+                                        <a
+                                          href={customerWaUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="px-3 py-1.5 bg-[#25D366] hover:bg-[#1ebe5d] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
+                                          title={`Send Official Order Confirmation to customer (${ord.customerPhone || ord.shippingAddress?.phone})`}
+                                        >
+                                          <MessageCircle className="w-3.5 h-3.5" />
+                                          <span>Confirm on Customer WhatsApp</span>
+                                        </a>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            navigator.clipboard?.writeText(orderListText);
+                                            showToast(`Order #${ord.orderNumber} List Template copied!`, 'success');
+                                          }}
+                                          className="px-2.5 py-1.5 bg-slate-100 dark:bg-[#162f22] hover:bg-slate-200 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#275943] rounded-xl text-xs font-bold flex items-center gap-1 transition-colors"
+                                          title="Copy single order WhatsApp List Template"
+                                        >
+                                          <Copy className="w-3.5 h-3.5" />
+                                          <span>Copy List</span>
+                                        </button>
+                                      </>
+                                    );
+                                  })()}
+
+                                  <button
+                                    onClick={() => openGmailInvoice(ord)}
+                                    className="px-3 py-1.5 bg-[#FAF3E0] dark:bg-[#162f22] hover:bg-[#fed65b]/20 text-[#012d1d] dark:text-[#fed65b] border border-amber-300 dark:border-[#275943] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
+                                    title="Send official HTML invoice via Gmail"
+                                  >
+                                    <Mail className="w-3.5 h-3.5 text-[#c79a1f]" />
+                                    <span>Dispatch Invoice via Gmail</span>
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           );
@@ -2555,8 +2716,8 @@ export const AdminPanel: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Support Details */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-6 border-b border-slate-200 dark:border-[#275943]">
+                    {/* Support & Official WhatsApp Details */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-6 border-b border-slate-200 dark:border-[#275943]">
                       <div>
                         <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                           Customer Care Phone Hotline
@@ -2567,6 +2728,23 @@ export const AdminPanel: React.FC = () => {
                           onChange={(e) => setSettingsForm({ ...settingsForm, supportPhone: e.target.value })}
                           className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-[#275943] bg-white dark:bg-[#162f22] text-slate-900 dark:text-slate-100"
                         />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
+                          <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
+                          <span>Official WhatsApp Number (Receive Orders)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={settingsForm.whatsappNumber ?? settingsForm.supportPhone}
+                          onChange={(e) => setSettingsForm({ ...settingsForm, whatsappNumber: e.target.value })}
+                          placeholder="+91 87076 71319"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-[#275943] bg-white dark:bg-[#162f22] text-slate-900 dark:text-slate-100 font-semibold"
+                        />
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          Include country code (e.g. +91 87076 71319). Every new order List Template targets this WhatsApp.
+                        </p>
                       </div>
 
                       <div>

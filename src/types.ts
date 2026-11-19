@@ -86,6 +86,7 @@ export interface Address {
   type: 'Home' | 'Work' | 'Other';
   fullName: string;
   phone: string;
+  email?: string;
   street: string;
   apartment?: string;
   city: string;
@@ -104,6 +105,29 @@ export interface TrackingStep {
 
 export type PaymentMethod = 'upi' | 'rupay' | 'visa' | 'mastercard' | 'card' | 'cod' | 'netbanking';
 
+export interface OrderEmailStatus {
+  sent: boolean;
+  skipped?: boolean;
+  recipient?: string;
+  messageId?: string;
+  reason?: string;
+  error?: string;
+}
+
+export interface OrderWhatsAppStatus {
+  sent: boolean;
+  skipped?: boolean;
+  mode?: 'meta_cloud_api' | 'webhook_relay' | 'click_to_chat_only';
+  adminNumber?: string;
+  waMeUrl?: string;
+  templateText?: string;
+  customerConfirmWaMeUrl?: string;
+  customerConfirmTemplateText?: string;
+  messageId?: string;
+  reason?: string;
+  error?: string;
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -120,10 +144,13 @@ export interface Order {
   shippingAddress: Address;
   customerName: string;
   customerPhone: string;
+  customerEmail?: string;
   paymentMethod: PaymentMethod;
   paymentStatus: 'paid' | 'pending' | 'cod_pending';
   trackingSteps: TrackingStep[];
   eta: string;
+  emailStatus?: OrderEmailStatus;
+  whatsappNotification?: OrderWhatsAppStatus;
 }
 
 export interface AppNotification {
@@ -184,6 +211,8 @@ export interface StoreSettings {
   flatShippingFee: number;
   taxRatePercent: number;
   supportPhone: string;
+  whatsappNumber?: string;
+  whatsappAutoNotify?: boolean;
   supportEmail: string;
   hubAddress: string;
   isStoreLive: boolean;

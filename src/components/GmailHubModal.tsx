@@ -42,10 +42,17 @@ export const GmailHubModal: React.FC<GmailHubModalProps> = ({
   initialOrder,
   initialInquiry,
 }) => {
-  const { orders, wholesaleInquiries, showToast } = useApp();
+  const { orders, wholesaleInquiries, showToast, user } = useApp();
   const [profile, setProfile] = useState<GmailProfile | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [smtpStatus, setSmtpStatus] = useState<{
+    configured: boolean;
+    authMode: string;
+    senderEmail: string | null;
+    verified?: boolean;
+    error?: string;
+  } | null>(null);
   const [recentEmails, setRecentEmails] = useState<GmailMessageSummary[]>([]);
   const [activeTab, setActiveTab] = useState<'invoice' | 'inquiry' | 'custom' | 'inbox'>('invoice');
 
@@ -72,19 +79,61 @@ export const GmailHubModal: React.FC<GmailHubModalProps> = ({
   const [customSubject, setCustomSubject] = useState<string>('');
   const [customMessage, setCustomMessage] = useState<string>('');
 
-  // Check auth state on mount
+  // Check auth state & server SMTP relay status on mount
   useEffect(() => {
     if (isOpen) {
       checkConnection();
+      fetchSmtpStatus();
       if (initialOrder) {
         setActiveTab('invoice');
         setSelectedOrderId(initialOrder.id);
+        const initialAddrEmail = initialOrder.customerEmail || initialOrder.shippingAddress?.email;
+        if (initialAddrEmail) {
+          setRecipientEmail(initialAddrEmail);
+        }
       } else if (initialInquiry) {
         setActiveTab('inquiry');
         setSelectedInquiryId(initialInquiry.id);
       }
     }
   }, [isOpen, initialOrder, initialInquiry]);
+
+  const fetchSmtpStatus = async () => {
+    try {
+      const res = await fetch('/api/email/status');
+      if (res.ok) {
+        const data = await res.json();
+        setSmtpStatus(data);
+      }
+    } catch {
+      // Non-blocking status check
+    }
+  };
+
+  const handleTestSmtpRelay = async () => {
+    try {
+      setLoading(true);
+      const adminEmail = user?.email || profile?.emailAddress || 'neevsona@gmail.com';
+      const res = await fetch('/api/email/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-email': adminEmail,
+        },
+      });
+      const data = await res.json();
+      setSmtpStatus((prev) => ({ ...(prev || { configured: false, authMode: 'unconfigured', senderEmail: null }), ...data, verified: Boolean(data.ok) }));
+      if (data.ok) {
+        showToast(`Gmail SMTP Relay verified (${data.senderEmail})`, 'success');
+      } else {
+        showToast(data.error || 'Gmail SMTP Relay not configured yet', 'warning');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to verify SMTP relay', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const checkConnection = async () => {
     const token = getGmailAccessToken();
@@ -357,17 +406,51 @@ export const GmailHubModal: React.FC<GmailHubModalProps> = ({
                 <span>{loading ? 'Connecting...' : 'Sign in with Google (Gmail)'}</span>
               </button>
             ) : (
-              <button
-                onClick={loadRecentEmails}
-                className="px-3 py-1.5 bg-slate-100 dark:bg-[#162f22] text-slate-600 dark:text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 hover:bg-slate-200"
-                title="Refresh Gmail Feed"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Refresh</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleTestSmtpRelay}
+                  disabled={loading}
+                  className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 hover:bg-emerald-100"
+                  title="Verify Server Nodemailer Gmail SMTP Relay"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>{smtpStatus?.verified ? 'SMTP Verified' : 'Test SMTP Relay'}</span>
+                </button>
+                <button
+                  onClick={loadRecentEmails}
+                  className="px-3 py-1.5 bg-slate-100 dark:bg-[#162f22] text-slate-600 dark:text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 hover:bg-slate-200"
+                  title="Refresh Gmail Feed"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Refresh</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
+
+        {smtpStatus && (
+          <div className="px-4 py-2 bg-slate-100/80 dark:bg-[#091811] border-b border-slate-200 dark:border-[#275943]/40 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+              <span className={`w-2 h-2 rounded-full ${smtpStatus.configured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <span>
+                <strong>Checkout Auto-Mailer (Nodemailer Gmail SMTP):</strong>{' '}
+                {smtpStatus.configured
+                  ? `Active via ${smtpStatus.senderEmail} (${smtpStatus.authMode})`
+                  : 'Waiting for GMAIL_USER & GMAIL_APP_PASSWORD environment secrets'}
+              </span>
+            </div>
+            {!isConnected && (
+              <button
+                onClick={handleTestSmtpRelay}
+                disabled={loading}
+                className="text-[11px] font-bold text-[#012d1d] dark:text-[#fed65b] hover:underline"
+              >
+                Test SMTP Connection
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Tab Navigation */}
         <div className="flex border-b border-slate-200 dark:border-[#275943]/60 px-5 pt-3 gap-2 overflow-x-auto">
@@ -445,7 +528,10 @@ export const GmailHubModal: React.FC<GmailHubModalProps> = ({
                       onChange={(e) => {
                         setSelectedOrderId(e.target.value);
                         const sel = orders.find((o) => o.id === e.target.value);
-                        if (sel && sel.shippingAddress?.fullName) {
+                        const savedEmail = sel?.customerEmail || sel?.shippingAddress?.email;
+                        if (savedEmail) {
+                          setRecipientEmail(savedEmail);
+                        } else if (sel && sel.shippingAddress?.fullName) {
                           setRecipientEmail(`${sel.shippingAddress.fullName.toLowerCase().replace(/\s+/g, '')}@gmail.com`);
                         }
                       }}

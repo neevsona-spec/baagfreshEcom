@@ -4,6 +4,28 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from '@supabase/supabase-js';
+import {
+  sendOrderConfirmationEmail,
+  verifyGmailSmtpConnection,
+  getGmailSmtpConfigStatus,
+  sendEmailViaGmailSmtp
+} from "./src/lib/email";
+import {
+  sendWhatsAppOrderAlertToOwner,
+  getWhatsAppConfigStatus,
+  setRuntimeOfficialWhatsAppNumber,
+  sendWhatsAppTextMessage
+} from "./src/lib/whatsapp";
+import {
+  localInsertOrder,
+  localGetOrderById,
+  localGetAllOrders,
+  localGetOrdersByPhone,
+  localUpdateOrderStatus,
+  localFindCustomer,
+  localUpsertCustomer,
+  localGetAllCustomers
+} from "./src/lib/localStore";
 
 const app = express();
 const PORT = 3000;
@@ -23,19 +45,48 @@ app.use("/api", (req, res, next) => {
   next();
 });
 
-// Supabase Server Client
+// Supabase Server Client (only active when explicitly configured via env and reachable)
 const defaultSupabaseUrl = 'https://yarbuasdzujbtrwcfdwb.supabase.co';
 const defaultSupabaseAnonKey = 'sb_publishable_TKF3pz5CdryPzu7vd0oKlg_RHOjOhHO';
 
 const rawServerUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
 const rawServerKey = (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
 
-const supabaseUrl = (rawServerUrl && (rawServerUrl.startsWith('http://') || rawServerUrl.startsWith('https://')))
-  ? rawServerUrl
-  : defaultSupabaseUrl;
+const hasExplicitSupabaseEnv = Boolean(
+  rawServerUrl && (rawServerUrl.startsWith('http://') || rawServerUrl.startsWith('https://'))
+);
+const supabaseUrl = hasExplicitSupabaseEnv ? rawServerUrl : defaultSupabaseUrl;
 const supabaseAnonKey = rawServerKey || defaultSupabaseAnonKey;
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+let supabaseBackoffUntil = 0;
+
+function isSupabaseNetworkError(err: any): boolean {
+  if (!err) return false;
+  const combined = `${err?.message || ''} ${err?.details || ''} ${err?.hint || ''} ${err?.code || ''}`.toLowerCase();
+  return (
+    combined.includes('fetch failed') ||
+    combined.includes('enotfound') ||
+    combined.includes('econnrefused') ||
+    combined.includes('etimedout') ||
+    combined.includes('eai_again') ||
+    combined.includes('network')
+  );
+}
+
+function canUseSupabase(): boolean {
+  if (!hasExplicitSupabaseEnv) return false;
+  return Date.now() >= supabaseBackoffUntil;
+}
+
+function noteSupabaseError(err: any): boolean {
+  if (isSupabaseNetworkError(err)) {
+    supabaseBackoffUntil = Date.now() + 60_000;
+    return true;
+  }
+  return false;
+}
 
 async function serverQueryOrder(executor: (tbl: string) => any) {
   let res = await executor('Order');
@@ -639,12 +690,19 @@ app.post("/api/orders", async (req, res) => {
 
     if (existingDedupe && (now - existingDedupe.timestamp) < 45000) {
       console.log(`[Orders API] Duplicate request caught by idempotency guard: ${dedupeKey} -> Returning ${existingDedupe.orderId}`);
-      // Fetch existing order from Supabase
-      const { data: existingRow } = await supabase
-        .from('Order')
-        .select('*')
-        .eq('order_id', existingDedupe.orderId)
-        .single();
+      let existingRow: any = null;
+      if (canUseSupabase()) {
+        const { data, error } = await supabase
+          .from('Order')
+          .select('*')
+          .eq('order_id', existingDedupe.orderId)
+          .single();
+        if (!error && data) existingRow = data;
+        else noteSupabaseError(error);
+      }
+      if (!existingRow) {
+        existingRow = localGetOrderById(existingDedupe.orderId);
+      }
 
       if (existingRow) {
         return res.json({
@@ -667,43 +725,67 @@ app.post("/api/orders", async (req, res) => {
     const cleanPaymentMethod = String(paymentMethod).toUpperCase();
     const cleanStatus = "Order Confirmed";
 
-    // 4. Upsert Customer Record in Supabase `Customer` table
-    try {
-      const { data: existingCust } = await supabase
-        .from('Customer')
-        .select('id, phone, email')
-        .eq('phone', cleanPhone)
-        .limit(1);
-
-      if (existingCust && existingCust.length > 0) {
-        await supabase
-          .from('Customer')
-          .update({
-            name: cleanName,
-            email: customerEmail || existingCust[0]?.email || '',
-            saved_address: shippingAddress
-          })
-          .eq('id', existingCust[0].id);
-      } else {
-        await supabase
-          .from('Customer')
-          .insert([{
-            name: cleanName,
-            phone: cleanPhone,
-            email: customerEmail || '',
-            saved_address: shippingAddress
-          }]);
-      }
-    } catch (custError) {
-      console.warn('[Orders API] Customer profile upsert notice:', custError);
+    // 4. Upsert Customer Record (Supabase when reachable + persistent local store)
+    let resolvedCustomerEmail = (customerEmail || shippingAddress?.email || '').trim();
+    const existingLocalCust = localFindCustomer({ phone: cleanPhone, email: resolvedCustomerEmail });
+    if (!resolvedCustomerEmail && existingLocalCust?.email) {
+      resolvedCustomerEmail = existingLocalCust.email;
     }
 
-    // 5. Insert Record into Supabase `Order` table
+    if (canUseSupabase()) {
+      try {
+        const { data: existingCust, error: custFetchErr } = await supabase
+          .from('Customer')
+          .select('id, phone, email')
+          .eq('phone', cleanPhone)
+          .limit(1);
+
+        if (custFetchErr) {
+          noteSupabaseError(custFetchErr);
+        } else if (existingCust && existingCust.length > 0) {
+          if (!resolvedCustomerEmail && existingCust[0]?.email) {
+            resolvedCustomerEmail = String(existingCust[0].email).trim();
+          }
+          await supabase
+            .from('Customer')
+            .update({
+              name: cleanName,
+              email: resolvedCustomerEmail || existingCust[0]?.email || '',
+              saved_address: shippingAddress
+            })
+            .eq('id', existingCust[0].id);
+        } else {
+          await supabase
+            .from('Customer')
+            .insert([{
+              name: cleanName,
+              phone: cleanPhone,
+              email: resolvedCustomerEmail || '',
+              saved_address: shippingAddress
+            }]);
+        }
+      } catch (custError) {
+        noteSupabaseError(custError);
+      }
+    }
+
+    localUpsertCustomer({
+      name: cleanName,
+      phone: cleanPhone,
+      email: resolvedCustomerEmail || '',
+      saved_address: shippingAddress,
+    });
+
+    // 5. Insert Order Record (Supabase when reachable, with automatic local persistent store fallback)
+    const persistedShippingAddress = resolvedCustomerEmail
+      ? { ...shippingAddress, email: resolvedCustomerEmail }
+      : shippingAddress;
+
     const orderPayload = {
       order_id: generatedOrderId,
       customer_name: cleanName,
       customer_phone: cleanPhone,
-      shipping_address: shippingAddress,
+      shipping_address: persistedShippingAddress,
       items: items,
       subtotal: numSubtotal,
       shipping_fee: numShipping,
@@ -712,24 +794,34 @@ app.post("/api/orders", async (req, res) => {
       status: cleanStatus
     };
 
-    const { data: insertedOrder, error: insertError } = await supabase
-      .from('Order')
-      .insert([orderPayload])
-      .select();
+    let savedOrderRow: any = null;
+    let storageBackend: 'supabase' | 'local_store' = 'local_store';
 
-    if (insertError) {
-      console.error('[Orders API] Supabase Insert Error:', insertError);
-      return res.status(500).json({
-        success: false,
-        error: `Could not save order in Supabase database: ${insertError.message || 'Database error'}`
-      });
+    if (canUseSupabase()) {
+      const { data: insertedOrder, error: insertError } = await supabase
+        .from('Order')
+        .insert([orderPayload])
+        .select();
+
+      if (!insertError && insertedOrder && insertedOrder.length > 0) {
+        savedOrderRow = insertedOrder[0];
+        storageBackend = 'supabase';
+      } else if (insertError && !noteSupabaseError(insertError)) {
+        console.error('[Orders API] Supabase Insert Error:', insertError);
+        return res.status(500).json({
+          success: false,
+          error: `Could not save order in Supabase database: ${insertError.message || 'Database error'}`
+        });
+      }
     }
 
-    if (!insertedOrder || insertedOrder.length === 0) {
-      return res.status(500).json({
-        success: false,
-        error: "Supabase order insertion returned no confirmation. Please retry."
-      });
+    // Always persist in server local store as well (primary when Supabase is unavailable)
+    const localRow = localInsertOrder({
+      ...orderPayload,
+      created_at: savedOrderRow?.created_at || new Date().toISOString(),
+    });
+    if (!savedOrderRow) {
+      savedOrderRow = localRow;
     }
 
     // Cache deduplication token
@@ -741,12 +833,73 @@ app.post("/api/orders", async (req, res) => {
       }
     }
 
-    console.log(`[Orders API] Order ${generatedOrderId} saved to Supabase successfully for ${cleanName} (${cleanPhone})`);
+    console.log(`[Orders API] Order ${generatedOrderId} saved via ${storageBackend} for ${cleanName} (${cleanPhone})`);
+
+    // 6. Automatically send order confirmation email via Nodemailer Gmail SMTP relay upon successful Supabase write
+    const emailStatus = await sendOrderConfirmationEmail({
+      orderId: generatedOrderId,
+      customerName: cleanName,
+      customerEmail: resolvedCustomerEmail,
+      customerPhone: cleanPhone,
+      shippingAddress: persistedShippingAddress,
+      items: items.map((item: any) => ({
+        name: item.product?.name || item.name || 'Premium Harvest Item',
+        weight: item.selectedWeight || item.weight,
+        quantity: Number(item.quantity || 1),
+        price: Number(item.price || 0),
+      })),
+      subtotal: numSubtotal,
+      discount: numDiscount,
+      shippingFee: numShipping,
+      tax: numTax,
+      total: finalTotal,
+      paymentMethod: cleanPaymentMethod,
+      paymentStatus: paymentStatus || (cleanPaymentMethod === 'COD' ? 'cod_pending' : 'paid'),
+    });
+
+    if (emailStatus.sent) {
+      console.log(`[Orders API] Confirmation email dispatched via Gmail SMTP to ${emailStatus.recipient} (Message ID: ${emailStatus.messageId})`);
+    } else {
+      console.log(`[Orders API] Confirmation email status for ${generatedOrderId}: ${emailStatus.reason || emailStatus.error || 'Not sent'}`);
+    }
+
+    // 7. Automatically generate Order List Template & dispatch to Official Store WhatsApp
+    const whatsappNotification = await sendWhatsAppOrderAlertToOwner({
+      orderId: generatedOrderId,
+      orderNumber: generatedOrderId,
+      status: cleanStatus,
+      customerName: cleanName,
+      customerPhone: cleanPhone,
+      customerEmail: resolvedCustomerEmail,
+      shippingAddress: persistedShippingAddress,
+      items: items.map((item: any) => ({
+        name: item.product?.name || item.name || 'Premium Harvest Item',
+        weight: item.selectedWeight || item.weight,
+        quantity: Number(item.quantity || 1),
+        price: Number(item.price || 0),
+      })),
+      subtotal: numSubtotal,
+      discount: numDiscount,
+      shippingFee: numShipping,
+      tax: numTax,
+      total: finalTotal,
+      paymentMethod: cleanPaymentMethod,
+      paymentStatus: paymentStatus || (cleanPaymentMethod === 'COD' ? 'cod_pending' : 'paid'),
+    });
+
+    if (whatsappNotification.sent) {
+      console.log(`[Orders API] WhatsApp Order List dispatched to ${whatsappNotification.adminNumber} via ${whatsappNotification.mode}`);
+    } else {
+      console.log(`[Orders API] WhatsApp Order List ready for ${whatsappNotification.adminNumber} (${whatsappNotification.mode})`);
+    }
 
     return res.status(201).json({
       success: true,
-      order: insertedOrder[0],
-      message: `Order #${generatedOrderId} confirmed and synced in Supabase database.`
+      order: savedOrderRow,
+      emailStatus,
+      whatsappNotification,
+      storage: storageBackend,
+      message: `Order #${generatedOrderId} confirmed and saved.`
     });
   } catch (error: any) {
     console.error('[Orders API] Uncaught Exception in POST /api/orders:', error);
@@ -774,14 +927,25 @@ app.get("/api/orders", async (req, res) => {
 
     // If fetching single order by orderId
     if (queryOrderId) {
-      const { data: order, error } = await supabase
-        .from('Order')
-        .select('*')
-        .eq('order_id', queryOrderId)
-        .single();
+      let order: any = null;
+      if (canUseSupabase()) {
+        const { data, error } = await supabase
+          .from('Order')
+          .select('*')
+          .eq('order_id', queryOrderId)
+          .single();
+        if (!error && data) {
+          order = data;
+        } else if (error) {
+          noteSupabaseError(error);
+        }
+      }
+      if (!order) {
+        order = localGetOrderById(queryOrderId);
+      }
 
-      if (error || !order) {
-        return res.status(404).json({ success: false, error: "Order not found in Supabase database." });
+      if (!order) {
+        return res.status(404).json({ success: false, error: "Order not found." });
       }
 
       // Security check: if not admin and phone mismatch
@@ -794,14 +958,22 @@ app.get("/api/orders", async (req, res) => {
 
     // Admin query without phone filter -> return ALL store orders
     if (isAdmin && !effectivePhone) {
-      const { data: allOrders, error } = await supabase
-        .from('Order')
-        .select('*')
-        .order('order_id', { ascending: false });
+      let allOrders: any[] | null = null;
+      if (canUseSupabase()) {
+        const { data, error } = await supabase
+          .from('Order')
+          .select('*')
+          .order('order_id', { ascending: false });
 
-      if (error) {
-        console.error('[Orders API] Error fetching admin orders from Supabase:', error);
-        return res.status(500).json({ success: false, error: error.message });
+        if (!error && Array.isArray(data)) {
+          allOrders = data;
+        } else if (error && !noteSupabaseError(error)) {
+          console.error('[Orders API] Error fetching admin orders from Supabase:', error);
+        }
+      }
+
+      if (allOrders === null) {
+        allOrders = localGetAllOrders();
       }
 
       return res.json({
@@ -814,15 +986,23 @@ app.get("/api/orders", async (req, res) => {
 
     // Customer query with phone filter -> return user's orders only
     if (effectivePhone) {
-      const { data: customerOrders, error } = await supabase
-        .from('Order')
-        .select('*')
-        .ilike('customer_phone', `%${effectivePhone.slice(-10)}%`)
-        .order('order_id', { ascending: false });
+      let customerOrders: any[] | null = null;
+      if (canUseSupabase()) {
+        const { data, error } = await supabase
+          .from('Order')
+          .select('*')
+          .ilike('customer_phone', `%${effectivePhone.slice(-10)}%`)
+          .order('order_id', { ascending: false });
 
-      if (error) {
-        console.error('[Orders API] Error fetching customer orders from Supabase:', error);
-        return res.status(500).json({ success: false, error: error.message });
+        if (!error && Array.isArray(data)) {
+          customerOrders = data;
+        } else if (error && !noteSupabaseError(error)) {
+          console.error('[Orders API] Error fetching customer orders from Supabase:', error);
+        }
+      }
+
+      if (customerOrders === null) {
+        customerOrders = localGetOrdersByPhone(effectivePhone);
       }
 
       return res.json({
@@ -856,25 +1036,35 @@ app.patch("/api/orders/:orderId/status", async (req, res) => {
       return res.status(400).json({ success: false, error: "Both orderId and status are required." });
     }
 
-    const { data: updated, error } = await supabase
-      .from('Order')
-      .update({ status: String(status) })
-      .eq('order_id', orderId)
-      .select();
+    let updatedRow: any = null;
+    if (canUseSupabase()) {
+      const { data: updated, error } = await supabase
+        .from('Order')
+        .update({ status: String(status) })
+        .eq('order_id', orderId)
+        .select();
 
-    if (error) {
-      console.error(`[Orders API] Failed to update status for order ${orderId}:`, error);
-      return res.status(500).json({ success: false, error: error.message });
+      if (!error && updated && updated.length > 0) {
+        updatedRow = updated[0];
+      } else if (error && !noteSupabaseError(error)) {
+        console.error(`[Orders API] Failed to update status for order ${orderId}:`, error);
+        return res.status(500).json({ success: false, error: error.message });
+      }
     }
 
-    if (!updated || updated.length === 0) {
-      return res.status(404).json({ success: false, error: `Order #${orderId} not found in Supabase.` });
+    const localUpdated = localUpdateOrderStatus(orderId, String(status));
+    if (!updatedRow) {
+      updatedRow = localUpdated;
     }
 
-    console.log(`[Orders API] Order #${orderId} status updated to "${status}" in Supabase.`);
+    if (!updatedRow) {
+      return res.status(404).json({ success: false, error: `Order #${orderId} not found.` });
+    }
+
+    console.log(`[Orders API] Order #${orderId} status updated to "${status}".`);
     return res.json({
       success: true,
-      order: updated[0],
+      order: updatedRow,
       message: `Order status updated to "${status}".`
     });
   } catch (error: any) {
@@ -903,64 +1093,71 @@ const handleCustomerRegistration = async (req: express.Request, res: express.Res
     const cleanEmail = isEmail ? rawIdentifier.toLowerCase() : (email ? String(email).trim().toLowerCase() : "");
     const cleanPhone = !isEmail ? normalizePhoneNumber(rawIdentifier) : (phone ? normalizePhoneNumber(phone) : "");
 
-    // 1. Check existing customer
-    let existingCustomer: any = null;
-    if (cleanPhone) {
-      const { data: byPhone } = await supabase
-        .from('Customer')
-        .select('*')
-        .eq('phone', cleanPhone)
-        .limit(1);
-      if (byPhone && byPhone.length > 0) existingCustomer = byPhone[0];
-    }
-
-    if (!existingCustomer && cleanEmail) {
-      const { data: byEmail } = await supabase
-        .from('Customer')
-        .select('*')
-        .eq('email', cleanEmail)
-        .limit(1);
-      if (byEmail && byEmail.length > 0) existingCustomer = byEmail[0];
-    }
-
     let customerRecord: any = null;
-    if (existingCustomer) {
-      // Update existing record
-      const { data: updated, error: updErr } = await supabase
-        .from('Customer')
-        .update({
-          name: cleanName || existingCustomer.name,
-          email: cleanEmail || existingCustomer.email,
-          phone: cleanPhone || existingCustomer.phone,
-          saved_address: address || existingCustomer.saved_address
-        })
-        .eq('id', existingCustomer.id)
-        .select();
+    if (canUseSupabase()) {
+      try {
+        let existingCustomer: any = null;
+        if (cleanPhone) {
+          const { data: byPhone, error } = await supabase
+            .from('Customer')
+            .select('*')
+            .eq('phone', cleanPhone)
+            .limit(1);
+          if (error) noteSupabaseError(error);
+          else if (byPhone && byPhone.length > 0) existingCustomer = byPhone[0];
+        }
 
-      customerRecord = (updated && updated[0]) ? updated[0] : existingCustomer;
-    } else {
-      // Insert new customer
-      const { data: created, error: insErr } = await supabase
-        .from('Customer')
-        .insert([{
-          name: cleanName,
-          phone: cleanPhone || null,
-          email: cleanEmail || '',
-          saved_address: address || null
-        }])
-        .select();
+        if (!existingCustomer && cleanEmail && canUseSupabase()) {
+          const { data: byEmail, error } = await supabase
+            .from('Customer')
+            .select('*')
+            .eq('email', cleanEmail)
+            .limit(1);
+          if (error) noteSupabaseError(error);
+          else if (byEmail && byEmail.length > 0) existingCustomer = byEmail[0];
+        }
 
-      if (insErr) {
-        console.error('[Customer API] Insert error in Supabase:', insErr);
+        if (canUseSupabase()) {
+          if (existingCustomer) {
+            const { data: updated, error: updErr } = await supabase
+              .from('Customer')
+              .update({
+                name: cleanName || existingCustomer.name,
+                email: cleanEmail || existingCustomer.email,
+                phone: cleanPhone || existingCustomer.phone,
+                saved_address: address || existingCustomer.saved_address
+              })
+              .eq('id', existingCustomer.id)
+              .select();
+            if (updErr) noteSupabaseError(updErr);
+            customerRecord = (updated && updated[0]) ? updated[0] : existingCustomer;
+          } else {
+            const { data: created, error: insErr } = await supabase
+              .from('Customer')
+              .insert([{
+                name: cleanName,
+                phone: cleanPhone || null,
+                email: cleanEmail || '',
+                saved_address: address || null
+              }])
+              .select();
+            if (insErr) noteSupabaseError(insErr);
+            if (created && created[0]) customerRecord = created[0];
+          }
+        }
+      } catch (e) {
+        noteSupabaseError(e);
       }
-      customerRecord = (created && created[0]) ? created[0] : {
-        id: `cust-${Date.now()}`,
-        name: cleanName,
-        phone: cleanPhone,
-        email: cleanEmail,
-        saved_address: address || null,
-        created_at: new Date().toISOString()
-      };
+    }
+
+    const localCustomer = localUpsertCustomer({
+      name: cleanName,
+      phone: cleanPhone || null,
+      email: cleanEmail || '',
+      saved_address: address || null,
+    });
+    if (!customerRecord) {
+      customerRecord = localCustomer;
     }
 
     // Build standard User profile
@@ -980,7 +1177,7 @@ const handleCustomerRegistration = async (req: express.Request, res: express.Res
 
     return res.status(200).json({
       success: true,
-      message: "Account registered successfully and synchronized with Supabase database.",
+      message: "Account registered successfully.",
       user: userProfile,
       customer: customerRecord
     });
@@ -1016,45 +1213,63 @@ app.post("/api/auth/login", async (req, res) => {
     const cleanPhone = !isEmail ? normalizePhoneNumber(rawIdentifier) : (phone ? normalizePhoneNumber(phone) : "");
 
     let customerRecord: any = null;
-    if (cleanPhone) {
-      const { data: byPhone } = await supabase
-        .from('Customer')
-        .select('*')
-        .eq('phone', cleanPhone)
-        .limit(1);
-      if (byPhone && byPhone.length > 0) customerRecord = byPhone[0];
-    }
-    if (!customerRecord && cleanEmail) {
-      const { data: byEmail } = await supabase
-        .from('Customer')
-        .select('*')
-        .eq('email', cleanEmail)
-        .limit(1);
-      if (byEmail && byEmail.length > 0) customerRecord = byEmail[0];
+    let customerOrders: any[] | null = null;
+
+    if (canUseSupabase()) {
+      try {
+        if (cleanPhone) {
+          const { data: byPhone, error } = await supabase
+            .from('Customer')
+            .select('*')
+            .eq('phone', cleanPhone)
+            .limit(1);
+          if (error) noteSupabaseError(error);
+          else if (byPhone && byPhone.length > 0) customerRecord = byPhone[0];
+        }
+        if (!customerRecord && cleanEmail && canUseSupabase()) {
+          const { data: byEmail, error } = await supabase
+            .from('Customer')
+            .select('*')
+            .eq('email', cleanEmail)
+            .limit(1);
+          if (error) noteSupabaseError(error);
+          else if (byEmail && byEmail.length > 0) customerRecord = byEmail[0];
+        }
+        if (!customerRecord && canUseSupabase()) {
+          const { data: created, error } = await supabase
+            .from('Customer')
+            .insert([{
+              name: name || (isEmail ? cleanEmail.split('@')[0] : 'Patron'),
+              phone: cleanPhone || null,
+              email: cleanEmail || '',
+            }])
+            .select();
+          if (error) noteSupabaseError(error);
+          else if (created && created[0]) customerRecord = created[0];
+        }
+        if (cleanPhone && canUseSupabase()) {
+          const { data: orders, error } = await supabase
+            .from('Order')
+            .select('*')
+            .ilike('customer_phone', `%${cleanPhone.slice(-10)}%`)
+            .order('order_id', { ascending: false });
+          if (error) noteSupabaseError(error);
+          else if (orders) customerOrders = orders;
+        }
+      } catch (e) {
+        noteSupabaseError(e);
+      }
     }
 
     if (!customerRecord) {
-      // Auto-provision customer
-      const { data: created } = await supabase
-        .from('Customer')
-        .insert([{
-          name: name || (isEmail ? cleanEmail.split('@')[0] : 'Patron'),
-          phone: cleanPhone || null,
-          email: cleanEmail || '',
-        }])
-        .select();
-      if (created && created[0]) customerRecord = created[0];
+      customerRecord = localUpsertCustomer({
+        name: name || (isEmail ? cleanEmail.split('@')[0] : 'Patron'),
+        phone: cleanPhone || null,
+        email: cleanEmail || '',
+      });
     }
-
-    // Fetch user orders
-    let customerOrders: any[] = [];
-    if (cleanPhone) {
-      const { data: orders } = await supabase
-        .from('Order')
-        .select('*')
-        .ilike('customer_phone', `%${cleanPhone.slice(-10)}%`)
-        .order('order_id', { ascending: false });
-      if (orders) customerOrders = orders;
+    if (customerOrders === null) {
+      customerOrders = cleanPhone ? localGetOrdersByPhone(cleanPhone) : [];
     }
 
     const userProfile = {
@@ -1087,7 +1302,7 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-// 4. Sync Customer Profile & Fetch Orders in Supabase
+// 4. Sync Customer Profile & Fetch Orders
 app.post("/api/customer/auth", async (req, res) => {
   try {
     const { phone, name, email, address } = req.body;
@@ -1097,52 +1312,74 @@ app.post("/api/customer/auth", async (req, res) => {
       return res.status(400).json({ success: false, error: "Valid phone number is required." });
     }
 
-    // 1. Fetch or Upsert Customer
     let customerRecord: any = null;
-    const { data: existingCust, error: fetchErr } = await supabase
-      .from('Customer')
-      .select('*')
-      .eq('phone', cleanPhone)
-      .limit(1);
+    let customerOrders: any[] | null = null;
 
-    if (existingCust && existingCust.length > 0) {
-      customerRecord = existingCust[0];
-      if (name || email || address) {
-        const { data: updatedCust } = await supabase
+    if (canUseSupabase()) {
+      try {
+        const { data: existingCust, error: fetchErr } = await supabase
           .from('Customer')
-          .update({
-            name: name || customerRecord.name,
-            email: email || customerRecord.email,
-            saved_address: address || customerRecord.saved_address
-          })
-          .eq('id', customerRecord.id)
-          .select();
-        if (updatedCust && updatedCust[0]) {
-          customerRecord = updatedCust[0];
-        }
-      }
-    } else {
-      const { data: newCust, error: insertErr } = await supabase
-        .from('Customer')
-        .insert([{
-          name: name || 'Patron',
-          phone: cleanPhone,
-          email: email || '',
-          saved_address: address || null
-        }])
-        .select();
+          .select('*')
+          .eq('phone', cleanPhone)
+          .limit(1);
 
-      if (newCust && newCust[0]) {
-        customerRecord = newCust[0];
+        if (fetchErr) {
+          noteSupabaseError(fetchErr);
+        } else if (existingCust && existingCust.length > 0) {
+          customerRecord = existingCust[0];
+          if (name || email || address) {
+            const { data: updatedCust } = await supabase
+              .from('Customer')
+              .update({
+                name: name || customerRecord.name,
+                email: email || customerRecord.email,
+                saved_address: address || customerRecord.saved_address
+              })
+              .eq('id', customerRecord.id)
+              .select();
+            if (updatedCust && updatedCust[0]) {
+              customerRecord = updatedCust[0];
+            }
+          }
+        } else {
+          const { data: newCust, error: insertErr } = await supabase
+            .from('Customer')
+            .insert([{
+              name: name || 'Patron',
+              phone: cleanPhone,
+              email: email || '',
+              saved_address: address || null
+            }])
+            .select();
+          if (insertErr) noteSupabaseError(insertErr);
+          else if (newCust && newCust[0]) customerRecord = newCust[0];
+        }
+
+        if (canUseSupabase()) {
+          const { data: orders, error: ordErr } = await supabase
+            .from('Order')
+            .select('*')
+            .ilike('customer_phone', `%${cleanPhone.slice(-10)}%`)
+            .order('order_id', { ascending: false });
+          if (ordErr) noteSupabaseError(ordErr);
+          else if (orders) customerOrders = orders;
+        }
+      } catch (e) {
+        noteSupabaseError(e);
       }
     }
 
-    // 2. Fetch Customer's Orders from Supabase
-    const { data: customerOrders } = await supabase
-      .from('Order')
-      .select('*')
-      .ilike('customer_phone', `%${cleanPhone.slice(-10)}%`)
-      .order('order_id', { ascending: false });
+    if (!customerRecord) {
+      customerRecord = localUpsertCustomer({
+        name: name || 'Patron',
+        phone: cleanPhone,
+        email: email || '',
+        saved_address: address || null,
+      });
+    }
+    if (customerOrders === null) {
+      customerOrders = localGetOrdersByPhone(cleanPhone);
+    }
 
     return res.json({
       success: true,
@@ -1155,22 +1392,126 @@ app.post("/api/customer/auth", async (req, res) => {
   }
 });
 
-// 5. Admin: Get all customers from Supabase
+// 5. Admin: Get all customers
 app.get("/api/customers", verifyAdminAuthorization, async (_req, res) => {
   try {
-    const { data: customers, error } = await supabase
-      .from('Customer')
-      .select('*')
-      .order('id', { ascending: false });
+    let customers: any[] | null = null;
+    if (canUseSupabase()) {
+      const { data, error } = await supabase
+        .from('Customer')
+        .select('*')
+        .order('id', { ascending: false });
 
-    if (error) {
-      return res.status(500).json({ success: false, error: error.message });
+      if (!error && Array.isArray(data)) {
+        customers = data;
+      } else if (error && !noteSupabaseError(error)) {
+        return res.status(500).json({ success: false, error: error.message });
+      }
+    }
+
+    if (customers === null) {
+      customers = localGetAllCustomers();
     }
 
     return res.json({ success: true, customers: customers || [] });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error?.message });
   }
+});
+
+// 6. Gmail SMTP Relay Diagnostics & Testing Endpoints
+app.get("/api/email/status", (_req, res) => {
+  res.json({
+    success: true,
+    ...getGmailSmtpConfigStatus(),
+  });
+});
+
+app.post("/api/email/verify", verifyAdminAuthorization, async (_req, res) => {
+  const verification = await verifyGmailSmtpConnection();
+  return res.status(verification.ok ? 200 : 400).json({
+    success: verification.ok,
+    ...verification,
+  });
+});
+
+app.post("/api/email/test", verifyAdminAuthorization, async (req, res) => {
+  const { to } = req.body || {};
+  const targetEmail = (to || req.headers["x-admin-email"] || "").toString().trim();
+
+  if (!targetEmail || !targetEmail.includes("@")) {
+    return res.status(400).json({
+      success: false,
+      error: "A valid recipient email address is required to send a test email.",
+    });
+  }
+
+  const result = await sendEmailViaGmailSmtp({
+    to: targetEmail,
+    subject: "BAAGFRESH Gmail SMTP Relay Test",
+    html: `<div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e6decb; border-radius: 12px; max-width: 560px;">
+      <h2 style="color: #012d1d; margin-top: 0;">BAAGFRESH Gmail SMTP Relay Connected</h2>
+      <p style="color: #374151; font-size: 14px; line-height: 1.6;">
+        This test confirms that your Nodemailer Gmail SMTP relay is properly configured and ready to dispatch automatic customer order confirmations after Supabase order writes.
+      </p>
+      <p style="color: #6b7280; font-size: 12px;">Timestamp: ${new Date().toISOString()}</p>
+    </div>`,
+    text: `BAAGFRESH Gmail SMTP Relay Connected. Timestamp: ${new Date().toISOString()}`,
+  });
+
+  return res.status(result.sent ? 200 : 400).json({
+    success: result.sent,
+    ...result,
+  });
+});
+
+// 7. Official WhatsApp Order Relay Configuration & Testing Endpoints
+app.get("/api/whatsapp/status", (_req, res) => {
+  res.json({
+    success: true,
+    ...getWhatsAppConfigStatus(),
+  });
+});
+
+app.post("/api/whatsapp/config", verifyAdminAuthorization, (req, res) => {
+  const { whatsappNumber } = req.body || {};
+  if (!whatsappNumber || String(whatsappNumber).replace(/[^\d]/g, '').length < 7) {
+    return res.status(400).json({
+      success: false,
+      error: "Valid official WhatsApp phone number is required.",
+    });
+  }
+  setRuntimeOfficialWhatsAppNumber(String(whatsappNumber));
+  return res.json({
+    success: true,
+    ...getWhatsAppConfigStatus(),
+  });
+});
+
+app.post("/api/whatsapp/test", verifyAdminAuthorization, async (req, res) => {
+  const { to } = req.body || {};
+  const status = getWhatsAppConfigStatus();
+  const targetPhone = (to || status.officialNumber).toString().trim();
+
+  const sampleListMessage = [
+    `*BAAGFRESH — WHATSAPP TEST ORDER LIST*`,
+    `━━━━━━━━━━━━━━━━━━━━━━`,
+    `*Order ID:* #TEST-${Date.now().toString().slice(-4)}`,
+    `*Customer:* Store Verification`,
+    `*ITEMS ORDERED LIST*`,
+    `1. *Iranian Mamra Royal Almonds* (250g) × 1 — ₹1,450`,
+    `2. *Kashmiri Mongra Saffron* (1g) × 1 — ₹599`,
+    `• *Grand Total: ₹2,049*`,
+    `━━━━━━━━━━━━━━━━━━━━━━`,
+    `Official WhatsApp order list system is active.`,
+  ].join('\n');
+
+  const result = await sendWhatsAppTextMessage(targetPhone, sampleListMessage);
+  return res.json({
+    success: true,
+    ...result,
+    templateText: sampleListMessage,
+  });
 });
 
 // Setup Vite middleware for development or serve static dist for production

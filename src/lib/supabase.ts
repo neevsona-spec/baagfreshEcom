@@ -11,7 +11,11 @@ const rawKey = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUP
   ? String(import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY).trim()
   : '';
 
-const supabaseUrl = (rawUrl && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')))
+export const isSupabaseRealtimeEnabled = Boolean(
+  rawUrl && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://'))
+);
+
+const supabaseUrl = isSupabaseRealtimeEnabled
   ? rawUrl
   : defaultSupabaseUrl;
 
@@ -109,13 +113,17 @@ async function safeFetchJson<T = any>(url: string, init?: RequestInit): Promise<
  * Server-Side Proxy API Client for Secure Supabase Transactions
  * Bypasses public browser RLS restrictions securely through authenticated backend routes.
  */
-export async function apiCreateOrder(orderPayload: any): Promise<any> {
-  const data = await safeFetchJson<{ success: boolean; order: any }>('/api/orders', {
+export async function apiCreateOrder(orderPayload: any): Promise<{ order: any; emailStatus?: any; whatsappNotification?: any }> {
+  const data = await safeFetchJson<{ success: boolean; order: any; emailStatus?: any; whatsappNotification?: any }>('/api/orders', {
     method: 'POST',
     body: JSON.stringify(orderPayload),
   });
 
-  return data.order;
+  return {
+    order: data.order,
+    emailStatus: data.emailStatus,
+    whatsappNotification: data.whatsappNotification,
+  };
 }
 
 export async function apiFetchOrders(params?: { phone?: string; adminEmail?: string; orderId?: string }): Promise<any[]> {

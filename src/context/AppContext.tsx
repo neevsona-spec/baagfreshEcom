@@ -44,6 +44,7 @@ import {
 import { LocalAuthManager } from '../services/LocalAuthManager';
 import { 
   supabase, 
+  isSupabaseRealtimeEnabled,
   queryOrderTable, 
   queryCustomerTable,
   apiCreateOrder,
@@ -247,6 +248,7 @@ export function mapSupabaseOrderToOrder(row: any): Order {
     shippingAddress: parsedAddress,
     customerName: row.customer_name || parsedAddress.fullName || 'Patron',
     customerPhone: String(row.customer_phone || parsedAddress.phone || ''),
+    customerEmail: row.customer_email || parsedAddress.email || '',
     paymentMethod: (row.payment_method || 'cod') as any,
     paymentStatus: (row.payment_method || '').toLowerCase() === 'cod' ? 'cod_pending' : 'paid',
     trackingSteps: generateTrackingSteps(rawStatus),
@@ -457,6 +459,8 @@ const INITIAL_STORE_SETTINGS: StoreSettings = {
   flatShippingFee: 99,
   taxRatePercent: 5,
   supportPhone: '+91 87076 71319',
+  whatsappNumber: '+91 87076 71319',
+  whatsappAutoNotify: true,
   supportEmail: 'contact@baagfresh.in',
   hubAddress: 'Varanasi Orchard Processing Hub, Pisach Mochan, UP 221001',
   isStoreLive: true,
@@ -816,6 +820,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = { ...prev, ...updates };
       saveStoreSettingsToFirestore(updated);
       broadcastSync('SETTINGS_SYNC', updated);
+      if (updates.whatsappNumber || updates.supportPhone) {
+        const targetWa = (updates.whatsappNumber || updated.whatsappNumber || updated.supportPhone || '').trim();
+        if (targetWa) {
+          fetch('/api/whatsapp/config', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-admin-email': user?.email || 'neevsona@gmail.com',
+            },
+            body: JSON.stringify({ whatsappNumber: targetWa }),
+          }).catch(() => {});
+        }
+      }
       return updated;
     });
     showToast('Store settings updated & live across store!', 'success');
@@ -1075,7 +1092,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Automatically propagate live product changes to QuickView modal if active
   useEffect(() => {
-    // Real-time Supabase Subscription
+    if (!isSupabaseRealtimeEnabled) {
+      return;
+    }
+
+    // Real-time Supabase Subscription (only when an external Supabase URL is configured)
     const channel1 = supabase.channel('realtime:orders:1')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'Order' }, payload => {
         console.log('Real-time INSERT on Order:', payload);
@@ -1594,6 +1615,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const generatedOrderId = 'ORD-' + Date.now();
     const custName = (orderData.customerName || orderData.shippingAddress?.fullName || 'Patron').trim();
     const custPhone = String(orderData.customerPhone || orderData.shippingAddress?.phone || '').trim();
+    const custEmail = String(orderData.customerEmail || orderData.shippingAddress?.email || user?.email || '').trim();
 
     if (!custPhone) {
       throw new Error('Valid customer contact phone number is required to confirm your order.');
@@ -1603,8 +1625,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       orderId: generatedOrderId,
       customerName: custName,
       customerPhone: custPhone,
-      customerEmail: user?.email || '',
-      shippingAddress: orderData.shippingAddress,
+      customerEmail: custEmail,
+      shippingAddress: {
+        ...orderData.shippingAddress,
+        ...(custEmail ? { email: custEmail } : {}),
+      },
       items: orderData.items,
       subtotal: Number(orderData.subtotal),
       shippingFee: Number(shippingFee),
@@ -1617,8 +1642,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     // 1. Save to Supabase (Enforced: will throw error if save fails)
-    const savedRow = await apiCreateOrder(orderPayload);
+    const { order: savedRow, emailStatus, whatsappNotification } = await apiCreateOrder(orderPayload);
     const mappedOrder = mapSupabaseOrderToOrder(savedRow);
+    if (custEmail && !mappedOrder.customerEmail) {
+      mappedOrder.customerEmail = custEmail;
+    }
+    if (emailStatus) {
+      mappedOrder.emailStatus = emailStatus;
+    }
+    if (whatsappNotification) {
+      mappedOrder.whatsappNotification = whatsappNotification;
+    }
 
     // 2. Update local state
     setOrders((prev) => [mappedOrder, ...prev.filter(o => o.id !== mappedOrder.id)]);
@@ -1627,12 +1661,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearCart();
 
     // 4. Notifications
+    const emailNotifSuffix = emailStatus?.sent
+      ? ` Confirmation email sent to ${emailStatus.recipient}.`
+      : '';
     addNotification(
       `Order ${mappedOrder.orderNumber} Confirmed!`,
-      `Thank you for your order of ${formatPrice(mappedOrder.total)}. Your order is saved in the Supabase database.`,
+      `Thank you for your order of ${formatPrice(mappedOrder.total)}. Your order is saved in the Supabase database.${emailNotifSuffix}`,
       'order'
     );
-    showToast(`Order ${mappedOrder.orderNumber} placed & saved in Supabase!`, 'success');
+    showToast(
+      emailStatus?.sent
+        ? `Order ${mappedOrder.orderNumber} saved & confirmation emailed to ${emailStatus.recipient}!`
+        : `Order ${mappedOrder.orderNumber} placed & saved in Supabase!`,
+      'success'
+    );
 
     return mappedOrder;
   };

@@ -13,11 +13,18 @@ import {
   Printer,
   Sparkles,
   Mail,
-  AlertCircle
+  AlertCircle,
+  MessageCircle,
+  Copy,
+  ListChecks
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Address, Order, PaymentMethod } from '../types';
 import { PaymentGateway } from './PaymentGateway';
+import {
+  buildWhatsAppClickToChatUrl,
+  formatSingleOrderListTemplate
+} from '../lib/whatsappTemplates';
 
 export const CheckoutModal: React.FC = () => {
   const {
@@ -37,6 +44,8 @@ export const CheckoutModal: React.FC = () => {
     createOrder,
     setTrackingOrder,
     openGmailInvoice,
+    storeSettings,
+    showToast,
     t
   } = useApp();
 
@@ -97,6 +106,7 @@ export const CheckoutModal: React.FC = () => {
   const [transactionInfo, setTransactionInfo] = useState<{ txnId: string; bankRef: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showWhatsAppTemplate, setShowWhatsAppTemplate] = useState(false);
 
   if (!isCheckoutOpen) return null;
 
@@ -107,7 +117,7 @@ export const CheckoutModal: React.FC = () => {
     const newFormData = {
       fullName: addr.fullName,
       phone: addr.phone,
-      email: user?.email || '',
+      email: addr.email || formData.email || user?.email || '',
       street: addr.street,
       apartment: addr.apartment || '',
       city: addr.city,
@@ -122,6 +132,10 @@ export const CheckoutModal: React.FC = () => {
     e.preventDefault();
     if (!formData.fullName || !formData.phone || !formData.street || !formData.city || !formData.pincode) {
       alert('Please fill all required delivery address fields.');
+      return;
+    }
+    if (!formData.email || !formData.email.includes('@')) {
+      alert('Please provide a valid email address for your order confirmation receipt.');
       return;
     }
     localStorage.setItem('baagfresh_saved_address', JSON.stringify(formData));
@@ -172,6 +186,7 @@ export const CheckoutModal: React.FC = () => {
         shippingAddress,
         customerName: formData.fullName,
         customerPhone: formData.phone,
+        customerEmail: formData.email || user?.email || '',
         paymentMethod: method,
         paymentStatus: method === 'cod' ? 'cod_pending' : 'paid',
       });
@@ -302,6 +317,19 @@ export const CheckoutModal: React.FC = () => {
                         </p>
                       </div>
                     ))}
+                  </div>
+                  <div className="mt-3">
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Confirmation Email Address *
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={formData.email}
+                      onChange={(e) => updateFormData('email', e.target.value)}
+                      placeholder="name@example.com"
+                      className="w-full px-3.5 py-2.5 text-xs bg-white dark:bg-[#162f22] text-slate-900 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-[#275943] focus:ring-1 focus:ring-[#c79a1f] focus:outline-none"
+                    />
                   </div>
                 </div>
               ) : (
@@ -598,6 +626,128 @@ export const CheckoutModal: React.FC = () => {
                   <span>{formatPrice(completedOrder.total)}</span>
                 </div>
               </div>
+
+              {/* Automated Email Confirmation Status */}
+              {completedOrder.emailStatus?.sent ? (
+                <div className="max-w-md mx-auto p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-center gap-2">
+                  <Mail className="w-4 h-4 shrink-0" />
+                  <span>
+                    Confirmation &amp; invoice emailed to <strong>{completedOrder.emailStatus.recipient}</strong>
+                  </span>
+                </div>
+              ) : completedOrder.customerEmail ? (
+                <div className="max-w-md mx-auto p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-left">
+                    <Mail className="w-4 h-4 shrink-0" />
+                    <span>
+                      {completedOrder.emailStatus?.reason || 'Order saved. Email dispatch queued.'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCheckoutOpen(false);
+                      openGmailInvoice(completedOrder);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-[#012d1d] text-[#fed65b] font-bold whitespace-nowrap"
+                  >
+                    Send via Gmail
+                  </button>
+                </div>
+              ) : null}
+
+              {/* Official WhatsApp Order Confirmation & List Template */}
+              {(() => {
+                const officialWaNumber = storeSettings.whatsappNumber || storeSettings.supportPhone || '+91 87076 71319';
+                const listTemplateText =
+                  completedOrder.whatsappNotification?.templateText ||
+                  formatSingleOrderListTemplate({
+                    orderId: completedOrder.id,
+                    orderNumber: completedOrder.orderNumber,
+                    date: completedOrder.date,
+                    status: completedOrder.status,
+                    customerName: completedOrder.customerName,
+                    customerPhone: completedOrder.customerPhone,
+                    customerEmail: completedOrder.customerEmail,
+                    shippingAddress: completedOrder.shippingAddress,
+                    items: completedOrder.items.map((it) => ({
+                      name: it.product.name,
+                      weight: it.selectedWeight,
+                      quantity: it.quantity,
+                      price: it.price,
+                    })),
+                    subtotal: completedOrder.subtotal,
+                    discount: completedOrder.discount,
+                    shippingFee: completedOrder.shippingFee,
+                    tax: completedOrder.tax,
+                    total: completedOrder.total,
+                    paymentMethod: completedOrder.paymentMethod,
+                    paymentStatus: completedOrder.paymentStatus,
+                  });
+                const waConfirmUrl =
+                  completedOrder.whatsappNotification?.waMeUrl ||
+                  buildWhatsAppClickToChatUrl(officialWaNumber, listTemplateText);
+
+                return (
+                  <div className="max-w-md mx-auto p-4 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/35 border border-emerald-200 dark:border-emerald-800 text-left space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-[#25D366] text-white flex items-center justify-center shrink-0 shadow-xs">
+                          <MessageCircle className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-emerald-950 dark:text-emerald-200">
+                            Official WhatsApp Order Confirmation
+                          </div>
+                          <div className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                            {completedOrder.whatsappNotification?.sent
+                              ? `Order list auto-sent to Official WhatsApp (${officialWaNumber})`
+                              : `Send your Order List directly to ${officialWaNumber}`}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowWhatsAppTemplate((v) => !v)}
+                        className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 hover:underline flex items-center gap-1 shrink-0"
+                      >
+                        <ListChecks className="w-3.5 h-3.5" />
+                        <span>{showWhatsAppTemplate ? 'Hide List' : 'View List'}</span>
+                      </button>
+                    </div>
+
+                    {showWhatsAppTemplate && (
+                      <pre className="p-3 rounded-xl bg-white dark:bg-[#0c1f16] border border-emerald-200 dark:border-[#275943] text-[11px] text-slate-700 dark:text-slate-200 whitespace-pre-wrap font-mono max-h-48 overflow-y-auto">
+                        {listTemplateText}
+                      </pre>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a
+                        href={waConfirmUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 px-4 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#1ebe5d] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        <span>Confirm Order on Official WhatsApp</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(listTemplateText);
+                          showToast('Order List Template copied!', 'success');
+                        }}
+                        className="px-3 py-2.5 rounded-xl bg-white dark:bg-[#162f22] border border-emerald-300 dark:border-[#275943] text-emerald-900 dark:text-emerald-200 text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-100/60"
+                        title="Copy Order List Template"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy List</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">

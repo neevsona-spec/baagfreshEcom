@@ -19,8 +19,7 @@ import {
   CheckCircle, 
   AlertTriangle, 
   Sparkles, 
-  Eye, 
-  EyeOff,
+  Eye,
   RefreshCw, 
   Save, 
   ChevronRight, 
@@ -52,7 +51,13 @@ import { useApp } from '../context/AppContext';
 import { Product, PromoCodeItem, StoreSettings, WholesaleInquiry, Order, CategorySlug, PackOption, RolePermissionPolicy, SecurityAuditLog, SecurityPostureStatus } from '../types';
 import { CATEGORIES } from '../data/products';
 import { resolveProductImage } from '../utils/productImageResolver';
-import { ADMIN_EMAILS, supabase } from '../lib/supabase';
+import { apiCheckAdminRole } from '../lib/supabase';
+import {
+  auth,
+  signInWithGoogle,
+  getFreshFirebaseIdToken,
+  logOut as firebaseLogOut,
+} from '../lib/firebase';
 import { authLogger } from '../utils/authLogger';
 import {
   buildWhatsAppClickToChatUrl,
@@ -68,9 +73,11 @@ export const AdminPanel: React.FC = () => {
     setIsAdminOpen,
     isAdminAuthenticated,
     setIsAdminAuthenticated,
-    user,
-    setUser,
-    signOutUser,
+    setIsAdminUser,
+    adminSessionToken,
+    setAdminSessionToken,
+    getAdminAuthHeaders,
+    logoutAdminSession,
     showToast,
     products,
     addProduct,
@@ -99,28 +106,24 @@ export const AdminPanel: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'promos' | 'inquiries' | 'settings' | 'security'>('overview');
   const [isBulkManagerOpen, setIsBulkManagerOpen] = useState(false);
-  
-  // Supabase Admin Authentication state
+
+  // Server-Verified Two-Step Owner Authentication state
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
-
-  // Fresh Admin Credentials Form
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberSession, setRememberSession] = useState(true);
+  const [approvalChallenge, setApprovalChallenge] = useState<string | null>(null);
+  const [approvalProvider, setApprovalProvider] = useState<string>('');
 
   // Security & RBAC state
   const [securityPosture, setSecurityPosture] = useState<SecurityPostureStatus>({
-    googleAuthEnforced: false,
+    googleAuthEnforced: true,
     serverSideVerificationActive: true,
     rbacPolicyLoaded: true,
     firestoreRulesEnforced: true,
     lastAuditCheck: new Date().toLocaleTimeString(),
-    authorizedAdminCount: ADMIN_EMAILS.length,
+    authorizedAdminCount: 1,
   });
   const [auditLogs, setAuditLogs] = useState<SecurityAuditLog[]>([]);
   const [rolePolicies, setRolePolicies] = useState<RolePermissionPolicy[]>([]);
@@ -186,16 +189,11 @@ export const AdminPanel: React.FC = () => {
     setSettingsForm(storeSettings);
   }, [storeSettings]);
 
-  const handleOpenInNewTab = () => {
-    try {
-      window.open(window.location.href, '_blank');
-      showToast('Opened store in dedicated tab for direct Google authentication.', 'info');
-    } catch {
-      window.location.reload();
+  const recordFailedAttempt = (serverRetrySeconds?: number) => {
+    if (serverRetrySeconds && serverRetrySeconds > 0) {
+      setLockoutRemaining(serverRetrySeconds);
+      return;
     }
-  };
-
-  const recordFailedAttempt = () => {
     const nextAttempts = failedAttempts + 1;
     setFailedAttempts(nextAttempts);
     if (nextAttempts >= 5) {
@@ -204,133 +202,196 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  const handleSupabaseAdminLogin = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  // When AdminPanel opens and a Firebase user is already signed in, ask server /api/auth/checkAdminRole
+  useEffect(() => {
+    if (!isAdminOpen || (isAdminAuthenticated && adminSessionToken)) return;
+    const currentFbUser = auth.currentUser;
+    if (!currentFbUser || approvalChallenge) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setAuthLoading(true);
+        const idToken = await currentFbUser.getIdToken();
+        const roleRes = await apiCheckAdminRole(idToken, { action: 'check' });
+        if (cancelled) return;
+        if (roleRes.isAdmin && roleRes.authorized) {
+          setIsAdminUser(true);
+          if (roleRes.confirmed && roleRes.sessionToken) {
+            setAdminSessionToken(roleRes.sessionToken);
+            setIsAdminAuthenticated(true);
+          } else if (roleRes.approvalChallenge) {
+            setApprovalChallenge(roleRes.approvalChallenge);
+            setApprovalProvider(roleRes.authProvider || 'firebase');
+          }
+        }
+      } catch {
+        // Non-owner or expired token — stay locked at Stage 1
+      } finally {
+        if (!cancelled) setAuthLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdminOpen, isAdminAuthenticated, adminSessionToken, approvalChallenge, setAdminSessionToken, setIsAdminAuthenticated, setIsAdminUser]);
+
+  /**
+   * Shared Stage 1 Server Role Verification via /api/auth/checkAdminRole
+   */
+  const runServerAdminRoleCheck = async (idToken: string) => {
+    const roleRes = await apiCheckAdminRole(idToken, { action: 'check' });
+
+    if (!roleRes.isAdmin || !roleRes.authorized || !roleRes.approved) {
+      await firebaseLogOut().catch(() => {});
+      throw new Error('Access Denied: This account is not an authorized store owner.');
+    }
+
+    setFailedAttempts(0);
+    setIsAdminUser(true);
+
+    if (roleRes.confirmed && roleRes.sessionToken) {
+      setAdminSessionToken(roleRes.sessionToken);
+      setIsAdminAuthenticated(true);
+      setApprovalChallenge(null);
+      showToast('Owner identity verified and confirmed.', 'success');
+      await fetchOrdersFromSupabase();
+      fetchSecurityAuditData(roleRes.sessionToken);
+      return;
+    }
+
+    if (!roleRes.approvalChallenge) {
+      throw new Error('Server approval challenge missing. Please retry verification.');
+    }
+
+    setApprovalChallenge(roleRes.approvalChallenge);
+    setApprovalProvider(roleRes.authProvider || 'google.com');
+    setAuthSuccess('Owner identity cryptographically approved by server. Please confirm access below to unlock the Admin Console.');
+  };
+
+  /**
+   * Stage 1: Cryptographic Owner Verification via Google Sign-In (Firebase Auth)
+   * Followed immediately by server-side /api/auth/checkAdminRole verification.
+   */
+  const handleGoogleOwnerVerify = async () => {
     if (lockoutRemaining > 0) return;
     setAuthError('');
     setAuthSuccess('');
     setAuthLoading(true);
-    authLogger.startSession('Admin Console Supabase Authentication');
+    authLogger.startSession('Server-Verified Owner Google Authentication');
 
     try {
-      const cleanEmail = adminEmail.trim().toLowerCase();
-      const cleanPass = adminPassword.trim();
-
-      if (!cleanEmail) {
-        throw new Error('Please provide an administrator email or username.');
-      }
-
-      // Check if email matches master admin or authorized list
-      const isMasterAdminEmail = ADMIN_EMAILS.includes(cleanEmail) || 
-        cleanEmail === 'neevsona@gmail.com' ||
-        cleanEmail.includes('admin') ||
-        cleanEmail.includes('neevsona');
-
-      let authApproved = false;
-      let adminRole = 'superadmin';
-      let adminName = 'Master Administrator (Neev Sona)';
-
-      // 1. Try direct Supabase Auth if password is supplied
-      if (cleanPass) {
-        try {
-          const { data: sbData, error: sbErr } = await supabase.auth.signInWithPassword({
-            email: cleanEmail,
-            password: cleanPass
-          });
-          if (!sbErr && sbData?.user) {
-            authApproved = true;
-            adminName = sbData.user.user_metadata?.full_name || sbData.user.email || 'Supabase Administrator';
-          }
-        } catch (sbEx) {
-          console.warn('Supabase Auth attempt note:', sbEx);
-        }
-      }
-
-      // 2. Master passkey / authorized admin verification
-      const validMasterKeys = ['BaagFresh@2026', 'admin123', 'neevsona2026', 'admin', 'root', 'baagfresh'];
-      if (!authApproved) {
-        if (isMasterAdminEmail) {
-          if (!cleanPass || validMasterKeys.includes(cleanPass) || cleanPass.length >= 4) {
-            authApproved = true;
-          }
-        } else if (validMasterKeys.includes(cleanPass)) {
-          authApproved = true;
-        }
-      }
-
-      if (!authApproved) {
-        throw new Error(`Authentication denied: Account "${cleanEmail}" is not recognized or incorrect credentials. Authorized admin: ${ADMIN_EMAILS[0]}`);
-      }
-
-      // Successful Admin Authentication
-      setIsAdminAuthenticated(true);
-      setFailedAttempts(0);
-
-      if (rememberSession) {
-        localStorage.setItem('baagfresh_admin_session', 'active');
-      }
-      sessionStorage.setItem('baagfresh_admin_session', 'active');
-
-      setUser((prev) => ({
-        ...prev,
-        id: 'admin-' + Date.now(),
-        name: adminName,
-        email: cleanEmail,
-        avatar: prev?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        memberSince: 'Founding Administrator'
-      }));
-
-      authLogger.logSessionHydration(cleanEmail, 'superadmin', true);
-      authLogger.endSession('success', `Admin authenticated: ${cleanEmail}`);
-      showToast(`Master Administrator Authenticated: ${cleanEmail}`, 'success');
-      
-      // Proactively fetch live Supabase orders without filter
-      await fetchOrdersFromSupabase();
-      fetchSecurityAuditData(cleanEmail);
+      const fbUser = await signInWithGoogle();
+      const idToken = await fbUser.getIdToken(true);
+      await runServerAdminRoleCheck(idToken);
+      authLogger.endSession('success', 'Owner identity verified by checkAdminRole');
     } catch (err: any) {
-      console.warn('Supabase Admin Auth Notice:', err);
-      authLogger.logError(err, 'Supabase Admin Authentication');
-      setAuthError(err?.message || 'Authentication failed. Please verify credentials.');
-      recordFailedAttempt();
+      await firebaseLogOut().catch(() => {});
+      setApprovalChallenge(null);
+      setIsAdminAuthenticated(false);
+      setIsAdminUser(false);
+      setAdminSessionToken(null);
+      authLogger.logError(err, 'Owner Google Authentication');
+      setAuthError(err?.message || 'Verification failed. Access denied.');
+      recordFailedAttempt(err?.retryAfterSeconds);
     } finally {
       setAuthLoading(false);
     }
   };
 
-  const fetchSecurityAuditData = async (adminEmail?: string) => {
-    setLoadingSecurity(true);
-    const emailToUse = adminEmail || user?.email || ADMIN_EMAILS[0];
+  /**
+   * Stage 2: Mandatory Owner Confirmation -> Activates Server-Side Confirmed Session
+   */
+  const handleConfirmAdminApproval = async () => {
+    if (!approvalChallenge) {
+      setAuthError('Approval challenge expired. Please authenticate again.');
+      return;
+    }
+    setAuthError('');
+    setAuthLoading(true);
     try {
-      const res = await fetch('/api/admin/security-audit', {
-        headers: {
-          'x-admin-email': emailToUse,
-          'Authorization': `Bearer ${emailToUse}`
-        }
+      const idToken = await getFreshFirebaseIdToken(true);
+      if (!idToken) {
+        throw new Error('Authentication session expired. Please sign in again.');
+      }
+
+      const confirmRes = await apiCheckAdminRole(idToken, {
+        action: 'confirm',
+        approvalChallenge,
       });
-      if (res.ok) {
-        const raw = await res.text();
-        const data = raw ? JSON.parse(raw) : {};
-        if (data.posture) {
-          setSecurityPosture({
-            ...data.posture,
-            lastAuditCheck: new Date().toLocaleTimeString(),
-          });
-        }
-        if (Array.isArray(data.auditEvents)) {
-          setAuditLogs(data.auditEvents);
-        }
-        if (Array.isArray(data.rolePolicies)) {
-          setRolePolicies(data.rolePolicies);
+
+      if (!confirmRes.confirmed || !confirmRes.sessionToken) {
+        throw new Error('Server confirmation was not granted. Please re-authenticate.');
+      }
+
+      setApprovalChallenge(null);
+      setAdminSessionToken(confirmRes.sessionToken);
+      setIsAdminUser(true);
+      setIsAdminAuthenticated(true);
+      setAuthSuccess('');
+      showToast('Administrative access approved and confirmed by server.', 'success');
+
+      await fetchOrdersFromSupabase();
+      fetchSecurityAuditData(confirmRes.sessionToken);
+    } catch (err: any) {
+      console.warn('Admin confirmation error:', err);
+      setApprovalChallenge(null);
+      setIsAdminAuthenticated(false);
+      setAdminSessionToken(null);
+      setAuthError(err?.message || 'Confirmation failed. Please authenticate again.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const fetchSecurityAuditData = async (explicitSessionToken?: string) => {
+    setLoadingSecurity(true);
+    try {
+      let headers: Record<string, string> | null = null;
+      if (explicitSessionToken) {
+        const idToken = await getFreshFirebaseIdToken(false);
+        if (idToken) {
+          headers = {
+            'Authorization': `Bearer ${idToken}`,
+            'x-admin-approval-token': explicitSessionToken,
+          };
         }
       } else {
-        // Fetch fallback public role policies
-        const roleRes = await fetch('/api/auth/roles-policy');
-        if (roleRes.ok) {
-          const rawRole = await roleRes.text();
-          const roleData = rawRole ? JSON.parse(rawRole) : {};
-          if (Array.isArray(roleData.matrix)) {
-            setRolePolicies(roleData.matrix);
+        headers = await getAdminAuthHeaders();
+      }
+
+      if (headers) {
+        const res = await fetch('/api/admin/security-audit', {
+          credentials: 'same-origin',
+          headers,
+        });
+        if (res.ok) {
+          const raw = await res.text();
+          const data = raw ? JSON.parse(raw) : {};
+          if (data.posture) {
+            setSecurityPosture({
+              ...data.posture,
+              lastAuditCheck: new Date().toLocaleTimeString(),
+            });
           }
+          if (Array.isArray(data.auditEvents)) {
+            setAuditLogs(data.auditEvents);
+          }
+          if (Array.isArray(data.rolePolicies)) {
+            setRolePolicies(data.rolePolicies);
+          }
+          return;
+        }
+      }
+
+      // Fallback to public role policy matrix only
+      const roleRes = await fetch('/api/auth/roles-policy');
+      if (roleRes.ok) {
+        const rawRole = await roleRes.text();
+        const roleData = rawRole ? JSON.parse(rawRole) : {};
+        if (Array.isArray(roleData.matrix)) {
+          setRolePolicies(roleData.matrix);
         }
       }
     } catch (err) {
@@ -341,30 +402,25 @@ export const AdminPanel: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isAdminAuthenticated && activeTab === 'security') {
+    if (isAdminAuthenticated && adminSessionToken && activeTab === 'security') {
       fetchSecurityAuditData();
     }
-  }, [isAdminAuthenticated, activeTab]);
+  }, [isAdminAuthenticated, adminSessionToken, activeTab]);
 
   const handleSecureAdminLogout = async () => {
     try {
       setAuthLoading(true);
-      setIsAdminAuthenticated(false);
-      localStorage.removeItem('baagfresh_admin_session');
-      sessionStorage.removeItem('baagfresh_admin_session');
+      setApprovalChallenge(null);
       setAuthError('');
       setAuthSuccess('');
-      try {
-        await supabase.auth.signOut();
-      } catch {
-        // ignore
-      }
+      await logoutAdminSession();
       setIsAdminOpen(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      showToast('Admin session closed. Returned to public store.', 'info');
+      showToast('Administrative session revoked. Returned to public store.', 'info');
     } catch (err) {
       console.warn('Admin logout error:', err);
       setIsAdminAuthenticated(false);
+      setAdminSessionToken(null);
       setIsAdminOpen(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       showToast('Admin console closed.', 'info');
@@ -526,8 +582,7 @@ export const AdminPanel: React.FC = () => {
   const outOfStockCount = products.filter((p) => p.inStock === false).length;
   const pendingInquiriesCount = wholesaleInquiries.filter((i) => i.status === 'new' || i.status === 'contacted').length;
 
-  // Diagnostic log to verify Supabase orders array length in render cycle
-  console.log('[AdminPanel] Render cycle - Supabase orders array length:', orders.length, orders);
+  const isFullyConfirmedAdmin = Boolean(isAdminAuthenticated && adminSessionToken);
 
   if (!isAdminOpen) return null;
 
@@ -538,7 +593,11 @@ export const AdminPanel: React.FC = () => {
         <div className="bg-[#012d1d] text-[#FAF3E0] px-3.5 sm:px-6 py-3 sm:py-4 flex items-center justify-between border-b border-[#1b4332] shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3">
             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-[#163a2c] text-[#fed65b] flex items-center justify-center border border-[#fed65b]/30 shrink-0">
-              <Lock className="w-4 h-4 sm:w-5 sm:h-5" />
+              {isFullyConfirmedAdmin ? (
+                <Unlock className="w-4 h-4 sm:w-5 sm:h-5" />
+              ) : (
+                <Lock className="w-4 h-4 sm:w-5 sm:h-5" />
+              )}
             </div>
             <div>
               <div className="flex items-center gap-1.5 sm:gap-2">
@@ -546,31 +605,31 @@ export const AdminPanel: React.FC = () => {
                   BAAGFRESH Admin
                 </h2>
                 <span className="bg-[#fed65b] text-[#012d1d] text-[9px] sm:text-[10px] font-black uppercase px-1.5 sm:px-2 py-0.5 rounded-full">
-                  Master
+                  {isFullyConfirmedAdmin ? 'Verified' : 'Protected'}
                 </span>
-                {isAdminAuthenticated && (
+                {isFullyConfirmedAdmin && (
                   <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-500/30">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    Supabase Live Connected
+                    Server Session Confirmed
                   </span>
                 )}
               </div>
               <p className="text-[10px] sm:text-xs text-slate-300 hidden sm:block">
-                {isAdminAuthenticated 
-                  ? `Active Admin: ${user?.email || 'Authorized Administrator'} • Live Supabase PostgreSQL Connected`
-                  : 'Management Console for Catalog, Supabase Orders, Coupons, and Store Operations.'}
+                {isFullyConfirmedAdmin
+                  ? 'Active Admin Session • Cryptographic Server Verification Enforced'
+                  : 'Restricted Owner Console — Server-Side Verification & Approval Required.'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {isAdminAuthenticated && (
+            {isFullyConfirmedAdmin && (
               <button
                 id="admin-topbar-logout-btn"
                 onClick={handleSecureAdminLogout}
                 disabled={authLoading}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-red-900/40 hover:bg-red-800/60 text-red-200 hover:text-white border border-red-500/40 font-bold transition-all shadow-sm group cursor-pointer"
-                title="Secure Logout & Return to Public Store"
+                title="Secure Logout & Revoke Server Session"
               >
                 {authLoading ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-red-300" />
@@ -591,21 +650,27 @@ export const AdminPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Auth Gate if not logged in */}
-        {!isAdminAuthenticated ? (
+        {/* Strict Server-Verified Auth & Two-Step Confirmation Gate */}
+        {!isFullyConfirmedAdmin ? (
           <div className="flex-1 flex items-center justify-center p-4 sm:p-6 bg-slate-50 dark:bg-[#0a1b12] overflow-y-auto">
             <div className="w-full max-w-md bg-white dark:bg-[#0f241a] p-6 sm:p-8 rounded-3xl shadow-xl border border-slate-200 dark:border-[#275943] text-left space-y-5">
-              
+
               {/* Header Badge */}
               <div className="text-center space-y-1.5">
                 <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[#012d1d] text-[#fed65b] flex items-center justify-center mx-auto border border-[#fed65b]/40 shadow-inner">
-                  <ShieldCheck className="w-7 h-7 sm:w-8 sm:h-8" />
+                  {approvalChallenge ? (
+                    <BadgeCheck className="w-7 h-7 sm:w-8 sm:h-8 text-emerald-400" />
+                  ) : (
+                    <ShieldCheck className="w-7 h-7 sm:w-8 sm:h-8" />
+                  )}
                 </div>
                 <h3 className="font-cinzel text-lg sm:text-xl font-bold text-[#012d1d] dark:text-[#fed65b]">
-                  Admin Control Portal
+                  {approvalChallenge ? 'Confirm Administrative Access' : 'Admin Verification Gate'}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Sign in with your administrator credentials or master access to manage the live Supabase store.
+                  {approvalChallenge
+                    ? 'Your owner identity was cryptographically verified by the server. Confirm below to unlock the Admin Console.'
+                    : 'Server-verified owner authentication is required. Only an authenticated store owner approved by checkAdminRole can proceed.'}
                 </p>
               </div>
 
@@ -631,89 +696,101 @@ export const AdminPanel: React.FC = () => {
                 </div>
               )}
 
-              {/* Fresh Supabase Admin Sign-In Form */}
-              <form onSubmit={handleSupabaseAdminLogin} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Admin Email / Username
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={adminEmail}
-                      onChange={(e) => setAdminEmail(e.target.value)}
-                      placeholder="e.g. neevsona@gmail.com"
-                      required
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-[#275943] bg-white dark:bg-[#162f22] text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#012d1d] dark:focus:ring-[#fed65b]"
-                    />
+              {approvalChallenge ? (
+                /* STAGE 2: Mandatory Owner Approval & Confirmation */
+                <div className="space-y-4">
+                  <div className="p-4 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-900 dark:text-emerald-200">
+                        Step 1: Identity Verified
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+                        Approved
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-800 dark:text-emerald-300 leading-relaxed">
+                      Signed token validated via <span className="font-mono font-bold">/api/auth/checkAdminRole</span> ({approvalProvider || 'verified provider'}). Complete Step 2 to issue your server-bound session.
+                    </p>
                   </div>
-                </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      Master Password / Key
-                    </label>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      (Optional if authorized)
-                    </span>
+                  <button
+                    type="button"
+                    onClick={handleConfirmAdminApproval}
+                    disabled={authLoading}
+                    className="w-full py-3 px-4 rounded-xl bg-[#012d1d] hover:bg-[#13402e] text-[#fed65b] font-bold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {authLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-[#fed65b]" />
+                        <span>Confirming with Server...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>Confirm & Unlock Admin Console</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSecureAdminLogout}
+                    disabled={authLoading}
+                    className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#162f22] dark:hover:bg-[#1d3e2d] text-slate-700 dark:text-slate-300 font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Cancel & Sign Out</span>
+                  </button>
+                </div>
+              ) : (
+                /* STAGE 1: Cryptographic Owner Verification via Google Sign-In (No Passwords or Master Keys) */
+                <div className="space-y-4">
+                  <button
+                    type="button"
+                    onClick={handleGoogleOwnerVerify}
+                    disabled={authLoading || lockoutRemaining > 0}
+                    className="w-full py-3.5 px-4 rounded-xl bg-[#012d1d] hover:bg-[#13402e] text-[#fed65b] font-bold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {authLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-[#fed65b]" />
+                        <span>Verifying with Server...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>Verify Owner with Google Sign-In</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#142d20] border border-slate-200 dark:border-[#214b37] text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed space-y-1">
+                    <p className="font-bold text-slate-800 dark:text-slate-100">
+                      Two-Step Owner Verification Active
+                    </p>
+                    <p>
+                      Sign in with your authorized store owner Google account. The server cryptographically validates your token via <span className="font-mono font-semibold">/api/auth/checkAdminRole</span> before prompting for final access confirmation.
+                    </p>
                   </div>
-                  <div className="relative">
-                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={adminPassword}
-                      onChange={(e) => setAdminPassword(e.target.value)}
-                      placeholder="Enter admin passcode or Supabase key"
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-[#275943] bg-white dark:bg-[#162f22] text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#012d1d] dark:focus:ring-[#fed65b]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
-                      tabIndex={-1}
+
+                  {authError && authError.toLowerCase().includes('popup') && (
+                    <a
+                      href={typeof window !== 'undefined' ? window.location.href : '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2 px-3 rounded-xl border border-slate-200 dark:border-[#275943] text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#162f22] flex items-center justify-center gap-1.5"
                     >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between text-xs">
-                  <label className="flex items-center gap-2 cursor-pointer text-slate-600 dark:text-slate-400">
-                    <input
-                      type="checkbox"
-                      checked={rememberSession}
-                      onChange={(e) => setRememberSession(e.target.checked)}
-                      className="w-3.5 h-3.5 rounded text-emerald-600 border-slate-300 dark:border-[#275943] focus:ring-0"
-                    />
-                    <span className="text-[11px]">Remember admin session</span>
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={authLoading || lockoutRemaining > 0}
-                  className="w-full py-3 px-4 rounded-xl bg-[#012d1d] hover:bg-[#13402e] text-[#fed65b] font-bold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {authLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-[#fed65b]" />
-                      <span>Authenticating with Supabase...</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-4 h-4" />
-                      <span>Sign In to Admin Portal</span>
-                    </>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Open in Dedicated Tab for Google Sign-In</span>
+                    </a>
                   )}
-                </button>
-              </form>
+                </div>
+              )}
 
-              <div className="pt-2 text-center">
+              <div className="pt-2 border-t border-slate-100 dark:border-[#1a382a] text-center">
                 <div className="text-[10px] text-slate-400 flex items-center justify-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Direct Supabase PostgreSQL Integration Active</span>
+                  <Lock className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Protected by Server-Side checkAdminRole Verification</span>
                 </div>
               </div>
             </div>
@@ -862,7 +939,7 @@ export const AdminPanel: React.FC = () => {
                     <BadgeCheck className="w-3.5 h-3.5 text-emerald-500" />
                   </div>
                   <div className="text-[10px] text-slate-600 dark:text-slate-300 font-medium truncate">
-                    {user?.email || 'neevsona@gmail.com'}
+                    Authorized Administrator
                   </div>
                   <div className="text-[9px] text-slate-400 dark:text-slate-500">
                     Varanasi Hub • Full RBAC Clearance
@@ -2840,10 +2917,10 @@ export const AdminPanel: React.FC = () => {
                         <Lock className="w-4 h-4 text-emerald-600" />
                       </div>
                       <div className="text-sm font-bold text-slate-800 dark:text-white">
-                        Active Middleware
+                        checkAdminRole Active
                       </div>
                       <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                        /api/admin routes gated by email whitelist.
+                        RS256 ID Token + 2-Step Approval enforced.
                       </p>
                     </div>
 
@@ -2865,15 +2942,15 @@ export const AdminPanel: React.FC = () => {
                     <div className="p-4 bg-white dark:bg-[#0f241a] rounded-2xl border border-emerald-200 dark:border-emerald-800/60 shadow-sm space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-700 dark:text-emerald-400">
-                          Authorized Admins
+                          Authorized Owners
                         </span>
                         <Sparkles className="w-4 h-4 text-[#fed65b]" />
                       </div>
                       <div className="text-sm font-bold text-slate-800 dark:text-white">
-                        {ADMIN_EMAILS.length} Accounts Whitelisted
+                        {securityPosture.authorizedAdminCount} Server-Verified Account{securityPosture.authorizedAdminCount === 1 ? '' : 's'}
                       </div>
                       <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                        Primary: {ADMIN_EMAILS[0]}
+                        Managed strictly on backend server
                       </p>
                     </div>
                   </div>

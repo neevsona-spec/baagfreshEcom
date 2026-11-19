@@ -29,51 +29,10 @@ const STORAGE_KEYS = {
   SETTINGS: 'baagfresh_customer_settings',
 };
 
-const DEFAULT_SEEDED_ACCOUNT: CustomerAccount = {
-  id: 'usr-patron-01',
-  name: 'Neev Sona',
-  emailOrPhone: 'neevsona@gmail.com',
-  email: 'neevsona@gmail.com',
-  phone: '+91 87076 71319',
-  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-  memberSince: 'October 2024',
-  addresses: [
-    {
-      id: 'addr-1',
-      type: 'Home',
-      fullName: 'Neev Sona',
-      phone: '+91 87076 71319',
-      street: '42 Assi Ghat Road, Bhelupur',
-      apartment: 'House #4B, Gangotri Villa',
-      city: 'Varanasi',
-      state: 'Uttar Pradesh',
-      pincode: '221005',
-      isDefault: true,
-    },
-    {
-      id: 'addr-2',
-      type: 'Work',
-      fullName: 'Anil kumar Keshari (Central Hub)',
-      phone: '+91 87076 71319',
-      street: 'Plot 18, Ring Road IT Hub, Shivpur',
-      apartment: 'Suite 302',
-      city: 'Varanasi',
-      state: 'Uttar Pradesh',
-      pincode: '221003',
-      isDefault: false,
-    }
-  ],
-  is2FAEnabled: false,
-  e2eEncryptionKeyFingerprint: 'BF-LOCAL-94A8-11FE',
-  cloudSyncEnabled: true,
-  createdAt: new Date().toISOString(),
-};
-
 /**
  * LocalAuthManager
  * Independent customer authentication service using browser localStorage.
- * Completely decoupled from Firebase, ensuring instantaneous, barrier-free sign-up, sign-in,
- * profile updating, and address management for store patrons.
+ * Never seeds administrator or owner accounts.
  */
 export class LocalAuthManagerService {
   private static instance: LocalAuthManagerService;
@@ -90,13 +49,13 @@ export class LocalAuthManagerService {
   }
 
   /**
-   * Seed default account if storage is pristine
+   * Initialize storage with an empty accounts list
    */
   private ensureInitialized(): void {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
       if (!raw) {
-        localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify([DEFAULT_SEEDED_ACCOUNT]));
+        localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify([]));
       }
     } catch (e) {
       console.warn('LocalAuthManager: storage init error', e);
@@ -118,7 +77,7 @@ export class LocalAuthManagerService {
     } catch (err) {
       console.warn('LocalAuthManager: Failed to read accounts', err);
     }
-    return [DEFAULT_SEEDED_ACCOUNT];
+    return [];
   }
 
   /**

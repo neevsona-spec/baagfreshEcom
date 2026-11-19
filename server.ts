@@ -26,6 +26,20 @@ import {
   localUpsertCustomer,
   localGetAllCustomers
 } from "./src/lib/localStore";
+import {
+  verifyAdminRequest,
+  issueAdminApprovalChallenge,
+  confirmAdminApprovalChallenge,
+  getActiveConfirmedSession,
+  setAdminSessionCookie,
+  clearAdminSessionCookie,
+  revokeAdminSession,
+  getAuthorizedOwnerEmails,
+  getClientIp,
+  checkAdminRateLimit,
+  recordFailedAdminAttempt,
+  clearFailedAdminAttempts,
+} from "./src/lib/serverAuth";
 
 const app = express();
 const PORT = 3000;
@@ -36,7 +50,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/api", (req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-email, x-user-email, x-user-phone");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-approval-token, x-user-email, x-user-phone");
   res.setHeader("Content-Type", "application/json");
 
   if (req.method === "OPTIONS") {
@@ -153,14 +167,7 @@ Response Formatting:
 // ==========================================
 // SECURITY & RBAC ACCESS CONTROL DEFINITIONS
 // ==========================================
-
-const AUTHORIZED_ADMIN_EMAILS = [
-  "neevsona@gmail.com",
-  "baagfresh@gmail.com",
-  "admin@baagfresh.in",
-  "maan1986@gmail.com",
-  "admin@baagfresh.com"
-];
+// Authorized owner list is strictly managed server-side in src/lib/serverAuth.ts
 
 // Server-side audit event store
 interface ServerSecurityEvent {
@@ -260,74 +267,57 @@ const ROLE_PERMISSIONS_POLICY = [
   }
 ];
 
-// Server-side Middleware: Verify Admin Access
-function verifyAdminAuthorization(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const authHeader = req.headers["authorization"] || "";
-  const adminEmailHeader = req.headers["x-admin-email"] as string;
-  const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown";
+function pushAuditEvent(event: Omit<ServerSecurityEvent, "id" | "timestamp">) {
+  serverAuditLog.unshift({
+    id: "sec-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: new Date().toISOString(),
+    ...event,
+  });
+  if (serverAuditLog.length > 100) serverAuditLog.pop();
+}
 
-  let candidateEmail = "";
-  if (adminEmailHeader) {
-    candidateEmail = adminEmailHeader.toLowerCase().trim();
-  } else if (authHeader.startsWith("Bearer ")) {
-    // In our client-server flow, header carries bearer email or token payload
-    candidateEmail = authHeader.replace("Bearer ", "").toLowerCase().trim();
-  }
+// Server-side Middleware: Cryptographic Admin Verification (Firebase ID Token + Confirmed Server Session)
+async function verifyAdminAuthorization(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const clientIp = getClientIp(req);
+  const verification = await verifyAdminRequest(req, { requireConfirmedSession: true });
 
-  const isAuthorized = Boolean(candidateEmail && AUTHORIZED_ADMIN_EMAILS.includes(candidateEmail));
-
-  if (!isAuthorized) {
-    const deniedEvent: ServerSecurityEvent = {
-      id: "sec-" + Date.now(),
-      timestamp: new Date().toISOString(),
+  if (!verification.ok || !verification.token) {
+    pushAuditEvent({
       action: "UNAUTHORIZED_ADMIN_ROUTE_ATTEMPT",
-      userEmail: candidateEmail || "anonymous",
+      userEmail: verification.token?.email || "unverified",
       status: "denied",
       ip: clientIp,
-      details: `Denied access to ${req.method} ${req.originalUrl}. Provided identity is not an authorized administrator.`,
-    };
-    serverAuditLog.unshift(deniedEvent);
-    if (serverAuditLog.length > 100) serverAuditLog.pop();
+      details: `Denied access to ${req.method} ${req.originalUrl}. Reason: ${verification.code || "AUTH_FORBIDDEN"}.`,
+    });
 
-    return res.status(403).json({
-      error: "Access Denied: Administrative privileges required. Google Sign-In with an authorized administrator account is enforced.",
-      code: "AUTH_FORBIDDEN",
-      requiredMethod: "Google Administrator Authentication",
+    return res.status(verification.statusCode || 403).json({
+      success: false,
+      error: verification.error || "Access Denied: Verified administrator authentication and approval confirmation are required.",
+      code: verification.code || "AUTH_FORBIDDEN",
     });
   }
 
+  (req as any).verifiedAdmin = verification.token;
   next();
 }
 
 // Server-side Middleware: Enforce Patron / Customer Data Isolation
-function enforceCustomerDataIsolation(req: express.Request, res: express.Response, next: express.NextFunction) {
+async function enforceCustomerDataIsolation(req: express.Request, res: express.Response, next: express.NextFunction) {
   const requestingUid = (req.headers["x-user-uid"] as string || "").trim();
-  const requestingEmail = (req.headers["x-user-email"] as string || "").toLowerCase().trim();
-  const authHeader = req.headers["authorization"] || "";
   const targetUserId = (req.params.userId || req.query.userId || req.body?.userId || "").toString().trim();
-  const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown";
+  const clientIp = getClientIp(req);
 
-  let tokenEmail = "";
-  if (authHeader.startsWith("Bearer ")) {
-    tokenEmail = authHeader.replace("Bearer ", "").toLowerCase().trim();
-  }
+  const adminCheck = await verifyAdminRequest(req, { requireConfirmedSession: true });
+  const isElevatedAdmin = adminCheck.ok;
 
-  const effectiveEmail = requestingEmail || tokenEmail;
-  const isElevatedAdmin = Boolean(effectiveEmail && AUTHORIZED_ADMIN_EMAILS.includes(effectiveEmail));
-
-  // If requesting a specific user's scoped resource (profile, orders, delivery), verify ownership or admin rights
   if (targetUserId && targetUserId !== requestingUid && !isElevatedAdmin) {
-    const crossAccessViolation: ServerSecurityEvent = {
-      id: "sec-cross-" + Date.now(),
-      timestamp: new Date().toISOString(),
+    pushAuditEvent({
       action: "CROSS_USER_DATA_ACCESS_BLOCKED",
-      userEmail: effectiveEmail || requestingUid || "unknown-user",
+      userEmail: requestingUid || "unknown-user",
       status: "denied",
       ip: clientIp,
-      details: `Blocked attempt to access customer data belonging to userId: "${targetUserId}". Requesting identity: "${requestingUid || effectiveEmail}".`,
-    };
-    serverAuditLog.unshift(crossAccessViolation);
-    if (serverAuditLog.length > 100) serverAuditLog.pop();
+      details: `Blocked attempt to access customer data belonging to userId: "${targetUserId}".`,
+    });
 
     return res.status(403).json({
       error: "Access Denied: Customer Data Isolation Policy violated. You may only query and view your own private orders and records.",
@@ -345,7 +335,7 @@ app.get("/api/health", (_req, res) => {
     status: "ok",
     hasApiKey: Boolean(process.env.GEMINI_API_KEY),
     service: "BaagFresh Secure Commerce & Gemini Server",
-    googleAuthEnforcedForAdmin: true,
+    serverAdminVerificationActive: true,
     timestamp: new Date().toISOString(),
   });
 });
@@ -355,84 +345,203 @@ app.get("/api/auth/roles-policy", (_req, res) => {
   res.json({
     success: true,
     matrix: ROLE_PERMISSIONS_POLICY,
-    adminMethodRequirement: "Google Sign-In with Authorized Administrator Email",
-    version: "2.0-hardened",
+    adminMethodRequirement: "Server-Verified Owner Identity (checkAdminRole) + Approval Confirmation",
+    version: "3.0-cryptographic-hardened",
   });
 });
 
-// Server-side Verification for Admin Google Identity
-app.post("/api/admin/verify-session", (req, res) => {
-  const { email, authProvider } = req.body;
-  const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown";
-  const cleanEmail = (email || "").toLowerCase().trim();
-
-  if (!cleanEmail) {
-    return res.status(400).json({ error: "Email address is required for identity verification." });
-  }
-
-  const isAuthorized = AUTHORIZED_ADMIN_EMAILS.includes(cleanEmail);
-
-  if (!isAuthorized) {
-    const deniedLog: ServerSecurityEvent = {
-      id: "sec-deny-" + Date.now(),
-      timestamp: new Date().toISOString(),
-      action: "ADMIN_LOGIN_DENIED",
-      userEmail: cleanEmail,
-      status: "denied",
-      ip: clientIp,
-      details: `Google Account ${cleanEmail} attempted to access Admin Console but is not in the authorized administrator directory.`,
-    };
-    serverAuditLog.unshift(deniedLog);
-
-    return res.status(403).json({
-      verified: false,
+/**
+ * Authoritative Server-Side Admin Role Verification & Two-Step Confirmation Endpoint
+ * - Verifies cryptographic Firebase RS256 ID Token signature against Google's official public x509 certs
+ * - Requires email_verified === true and exact match against server-only owner allowlist
+ * - Stage 1 (action: 'check'): Issues a 5-minute signed single-use approval challenge
+ * - Stage 2 (action: 'confirm'): Consumes challenge & mints a server-bound HttpOnly + in-memory session
+ */
+async function handleCheckAdminRole(req: express.Request, res: express.Response) {
+  const clientIp = getClientIp(req);
+  const rateCheck = checkAdminRateLimit(clientIp);
+  if (!rateCheck.allowed) {
+    return res.status(429).json({
+      success: false,
+      isAdmin: false,
       authorized: false,
-      role: "customer",
-      message: `Account "${cleanEmail}" is not recognized as an authorized administrator.`,
+      approved: false,
+      confirmed: false,
+      code: "RATE_LIMITED",
+      retryAfterSeconds: rateCheck.retryAfterSeconds,
+      error: `Too many failed administrative verification attempts. Try again in ${rateCheck.retryAfterSeconds} seconds.`,
     });
   }
 
-  const successLog: ServerSecurityEvent = {
-    id: "sec-auth-" + Date.now(),
-    timestamp: new Date().toISOString(),
-    action: "ADMIN_SESSION_VERIFIED",
-    userEmail: cleanEmail,
+  const verification = await verifyAdminRequest(req, { requireConfirmedSession: false });
+  if (!verification.ok || !verification.token) {
+    recordFailedAdminAttempt(clientIp);
+    pushAuditEvent({
+      action: "ADMIN_ROLE_CHECK_DENIED",
+      userEmail: verification.token?.email || "unverified",
+      status: "denied",
+      ip: clientIp,
+      details: `checkAdminRole denied (${verification.code || "FORBIDDEN"}) from IP ${clientIp}.`,
+    });
+
+    return res.status(verification.statusCode || 403).json({
+      success: false,
+      isAdmin: false,
+      authorized: false,
+      approved: false,
+      confirmed: false,
+      code: verification.code || "ADMIN_ROLE_FORBIDDEN",
+      error: verification.error || "Access Denied: Verified owner credentials are required.",
+    });
+  }
+
+  const decoded = verification.token;
+  clearFailedAdminAttempts(clientIp);
+
+  const action = (req.body?.action || req.query?.action || "check").toString().toLowerCase();
+  const existingSession = getActiveConfirmedSession(req, decoded.uid, decoded.email);
+
+  // Stage 2: Explicit Owner Confirmation -> consumes signed approvalChallenge & activates server session
+  if (action === "confirm") {
+    const challengeToken = (req.body?.approvalChallenge || "").toString().trim();
+
+    // If an active confirmed session already exists for this exact verified owner, return it
+    if (existingSession) {
+      setAdminSessionCookie(req, res, existingSession.sessionToken);
+      return res.json({
+        success: true,
+        isAdmin: true,
+        authorized: true,
+        approved: true,
+        confirmed: true,
+        requiresConfirmation: false,
+        role: "owner_admin",
+        sessionToken: existingSession.sessionToken,
+        expiresInSeconds: Math.max(60, Math.floor((existingSession.expiresAt - Date.now()) / 1000)),
+        authProvider: decoded.signInProvider || "firebase",
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const confirmedSession = confirmAdminApprovalChallenge(challengeToken, decoded.uid, decoded.email);
+    if (!confirmedSession) {
+      pushAuditEvent({
+        action: "ADMIN_CONFIRMATION_FAILED",
+        userEmail: decoded.email,
+        status: "denied",
+        ip: clientIp,
+        details: "Invalid or expired approval challenge submitted during Step 2 confirmation.",
+      });
+      return res.status(403).json({
+        success: false,
+        isAdmin: false,
+        authorized: false,
+        approved: false,
+        confirmed: false,
+        code: "INVALID_APPROVAL_CHALLENGE",
+        error: "Approval confirmation token is invalid or expired. Please authenticate again.",
+      });
+    }
+
+    setAdminSessionCookie(req, res, confirmedSession.sessionToken);
+    pushAuditEvent({
+      action: "ADMIN_ACCESS_CONFIRMED",
+      userEmail: decoded.email,
+      status: "granted",
+      ip: clientIp,
+      details: `Owner identity cryptographically verified (${decoded.signInProvider || "firebase"}) and explicitly confirmed.`,
+    });
+
+    return res.json({
+      success: true,
+      isAdmin: true,
+      authorized: true,
+      approved: true,
+      confirmed: true,
+      requiresConfirmation: false,
+      role: "owner_admin",
+      sessionToken: confirmedSession.sessionToken,
+      expiresInSeconds: Math.floor((confirmedSession.expiresAt - Date.now()) / 1000),
+      authProvider: decoded.signInProvider || "firebase",
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Stage 1: Identity Verified & Approved -> return active session or issue signed confirmation challenge
+  if (existingSession) {
+    return res.json({
+      success: true,
+      isAdmin: true,
+      authorized: true,
+      approved: true,
+      confirmed: true,
+      requiresConfirmation: false,
+      role: "owner_admin",
+      sessionToken: existingSession.sessionToken,
+      expiresInSeconds: Math.max(60, Math.floor((existingSession.expiresAt - Date.now()) / 1000)),
+      authProvider: decoded.signInProvider || "firebase",
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  const approvalChallenge = issueAdminApprovalChallenge(decoded.uid, decoded.email);
+  pushAuditEvent({
+    action: "ADMIN_IDENTITY_APPROVED_PENDING_CONFIRMATION",
+    userEmail: decoded.email,
     status: "granted",
     ip: clientIp,
-    details: `Google Admin identity verified successfully via ${authProvider || "google.com"}. Session granted superadmin rights.`,
-  };
-  serverAuditLog.unshift(successLog);
-  if (serverAuditLog.length > 100) serverAuditLog.pop();
+    details: `Owner identity verified via ${decoded.signInProvider || "firebase"}. Awaiting explicit owner confirmation.`,
+  });
 
   return res.json({
-    verified: true,
+    success: true,
+    isAdmin: true,
     authorized: true,
-    role: "superadmin",
-    userEmail: cleanEmail,
-    permissions: ROLE_PERMISSIONS_POLICY[0].allowedActions,
-    sessionExpiresInSeconds: 86400,
+    approved: true,
+    confirmed: false,
+    requiresConfirmation: true,
+    approvalChallenge,
+    role: "owner_admin",
+    authProvider: decoded.signInProvider || "firebase",
     timestamp: new Date().toISOString(),
   });
+}
+
+app.post("/api/auth/checkAdminRole", handleCheckAdminRole);
+app.get("/api/auth/checkAdminRole", handleCheckAdminRole);
+app.post("/api/checkAdminRole", handleCheckAdminRole);
+app.get("/api/checkAdminRole", handleCheckAdminRole);
+// Legacy verify-session route now enforces the same cryptographic checkAdminRole guard
+app.post("/api/admin/verify-session", handleCheckAdminRole);
+
+// Revoke server-side admin confirmation session
+app.post("/api/auth/adminLogout", (req, res) => {
+  const clientIp = getClientIp(req);
+  revokeAdminSession(req);
+  clearAdminSessionCookie(req, res);
+  pushAuditEvent({
+    action: "ADMIN_SESSION_REVOKED",
+    userEmail: "owner",
+    status: "granted",
+    ip: clientIp,
+    details: "Server-side administrative session revoked and cookie cleared.",
+  });
+  return res.json({ success: true, message: "Administrative session closed." });
 });
 
 // Customer Session & Isolation Audit Verification Endpoint
 app.post("/api/customer/verify-access", enforceCustomerDataIsolation, (req, res) => {
-  const { userId, orderId, action = "read_orders" } = req.body;
+  const { orderId, action = "read_orders" } = req.body;
   const requestingUid = (req.headers["x-user-uid"] as string || "").trim();
-  const requestingEmail = (req.headers["x-user-email"] as string || "").toLowerCase().trim();
-  const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown";
+  const clientIp = getClientIp(req);
 
-  const accessEvent: ServerSecurityEvent = {
-    id: "sec-cust-" + Date.now(),
-    timestamp: new Date().toISOString(),
+  pushAuditEvent({
     action: "CUSTOMER_ISOLATED_ACCESS_GRANTED",
-    userEmail: requestingEmail || requestingUid || "customer",
+    userEmail: requestingUid || "customer",
     status: "granted",
     ip: clientIp,
     details: `Authorized isolated data query for customer UID: ${requestingUid}. Action: ${action}${orderId ? ` on Order #${orderId}` : ""}.`,
-  };
-  serverAuditLog.unshift(accessEvent);
-  if (serverAuditLog.length > 100) serverAuditLog.pop();
+  });
 
   return res.json({
     authorized: true,
@@ -445,7 +554,7 @@ app.post("/api/customer/verify-access", enforceCustomerDataIsolation, (req, res)
 });
 
 // Protected Administrative Security Audit Endpoint
-app.get("/api/admin/security-audit", verifyAdminAuthorization, (req, res) => {
+app.get("/api/admin/security-audit", verifyAdminAuthorization, (_req, res) => {
   res.json({
     success: true,
     posture: {
@@ -454,8 +563,8 @@ app.get("/api/admin/security-audit", verifyAdminAuthorization, (req, res) => {
       rbacPolicyLoaded: true,
       firestoreRulesEnforced: true,
       lastAuditCheck: new Date().toISOString(),
-      authorizedAdminCount: AUTHORIZED_ADMIN_EMAILS.length,
-      allowedDomains: ["gmail.com", "baagfresh.in", "baagfresh.com"],
+      authorizedAdminCount: getAuthorizedOwnerEmails().length,
+      verificationMechanism: "Cryptographic Firebase RS256 ID Token + checkAdminRole Approval Session",
     },
     auditEvents: serverAuditLog.slice(0, 30),
     rolePolicies: ROLE_PERMISSIONS_POLICY,
@@ -469,7 +578,7 @@ app.get("/api/admin/stats", verifyAdminAuthorization, (_req, res) => {
     serverUptimeSeconds: Math.floor(process.uptime()),
     memoryUsage: process.memoryUsage(),
     nodeVersion: process.version,
-    securityShield: "ACTIVE (Strict Google Admin RBAC)",
+    securityShield: "ACTIVE (Cryptographic checkAdminRole + Confirmed Server Session)",
     timestamp: new Date().toISOString(),
   });
 });
@@ -910,18 +1019,16 @@ app.post("/api/orders", async (req, res) => {
   }
 });
 
-// 2. Fetch Orders (Customer-isolated or Admin full-access)
+// 2. Fetch Orders (Customer-isolated or Server-Verified Admin full-access)
 app.get("/api/orders", async (req, res) => {
   try {
     const queryPhone = req.query.phone as string;
     const queryOrderId = req.query.orderId as string;
-    const adminEmailHeader = (req.headers["x-admin-email"] as string || "").toLowerCase().trim();
-    const userEmailHeader = (req.headers["x-user-email"] as string || "").toLowerCase().trim();
-    const authHeader = (req.headers["authorization"] || "").replace("Bearer ", "").toLowerCase().trim();
     const userPhoneHeader = (req.headers["x-user-phone"] as string || "").trim();
 
-    const candidateAdminEmail = adminEmailHeader || authHeader || userEmailHeader;
-    const isAdmin = Boolean(candidateAdminEmail && AUTHORIZED_ADMIN_EMAILS.includes(candidateAdminEmail));
+    // Cryptographically verify admin role & confirmed session (never trust raw email headers)
+    const adminVerification = await verifyAdminRequest(req, { requireConfirmedSession: true });
+    const isAdmin = adminVerification.ok;
 
     const effectivePhone = normalizePhoneNumber(queryPhone || userPhoneHeader);
 
@@ -948,9 +1055,13 @@ app.get("/api/orders", async (req, res) => {
         return res.status(404).json({ success: false, error: "Order not found." });
       }
 
-      // Security check: if not admin and phone mismatch
-      if (!isAdmin && effectivePhone && normalizePhoneNumber(order.customer_phone) !== effectivePhone) {
-        return res.status(403).json({ success: false, error: "Unauthorized access to order." });
+      // Strict ownership check: non-admin must supply a matching customer phone
+      if (!isAdmin) {
+        const orderDigits = normalizePhoneNumber(order.customer_phone).slice(-10);
+        const reqDigits = effectivePhone.slice(-10);
+        if (!reqDigits || !orderDigits || orderDigits !== reqDigits) {
+          return res.status(403).json({ success: false, error: "Unauthorized access to order." });
+        }
       }
 
       return res.json({ success: true, order });
@@ -1026,14 +1137,55 @@ app.get("/api/orders", async (req, res) => {
   }
 });
 
-// 3. Update Order Status (Admin or Cancellation)
+// 3. Update Order Status (Strictly Server-Verified Admin, or Self-Cancellation by Order Owner)
 app.patch("/api/orders/:orderId/status", async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status, note } = req.body;
+    const { status, customerPhone } = req.body || {};
 
     if (!orderId || !status) {
       return res.status(400).json({ success: false, error: "Both orderId and status are required." });
+    }
+
+    const adminVerification = await verifyAdminRequest(req, { requireConfirmedSession: true });
+    if (!adminVerification.ok) {
+      // Non-admins may ONLY cancel their own order when phone matches the order's customer_phone
+      const isCancellation = String(status).trim().toLowerCase() === "cancelled";
+      const reqPhoneDigits = normalizePhoneNumber(customerPhone || (req.headers["x-user-phone"] as string)).slice(-10);
+
+      if (!isCancellation || !reqPhoneDigits) {
+        return res.status(403).json({
+          success: false,
+          code: "ADMIN_ROLE_REQUIRED",
+          error: "Access Denied: Verified administrator authentication is required to update order status.",
+        });
+      }
+
+      let existingOrder: any = null;
+      if (canUseSupabase()) {
+        const { data, error } = await supabase
+          .from('Order')
+          .select('order_id, customer_phone')
+          .eq('order_id', orderId)
+          .single();
+        if (!error && data) existingOrder = data;
+        else if (error) noteSupabaseError(error);
+      }
+      if (!existingOrder) {
+        existingOrder = localGetOrderById(orderId);
+      }
+      if (!existingOrder) {
+        return res.status(404).json({ success: false, error: `Order #${orderId} not found.` });
+      }
+
+      const orderDigits = normalizePhoneNumber(existingOrder.customer_phone).slice(-10);
+      if (!orderDigits || orderDigits !== reqPhoneDigits) {
+        return res.status(403).json({
+          success: false,
+          code: "ORDER_OWNER_MISMATCH",
+          error: "Access Denied: You can only cancel your own orders.",
+        });
+      }
     }
 
     let updatedRow: any = null;
@@ -1437,7 +1589,7 @@ app.post("/api/email/verify", verifyAdminAuthorization, async (_req, res) => {
 
 app.post("/api/email/test", verifyAdminAuthorization, async (req, res) => {
   const { to } = req.body || {};
-  const targetEmail = (to || req.headers["x-admin-email"] || "").toString().trim();
+  const targetEmail = (to || (req as any).verifiedAdmin?.email || "").toString().trim();
 
   if (!targetEmail || !targetEmail.includes("@")) {
     return res.status(400).json({

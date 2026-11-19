@@ -188,20 +188,22 @@ export const Header: React.FC = () => {
 
           {/* Right Selectors & Toggles */}
           <div className="flex items-center gap-2.5 sm:gap-3">
-            {/* Website Owner Admin Console Button */}
-            <button
-              id="topbar-admin-portal-btn"
-              onClick={() => setIsAdminOpen(true)}
-              className="flex items-center gap-1 px-2.5 sm:px-3 py-0.5 rounded-full bg-[#163a2c] hover:bg-[#235843] text-xs text-[#fed65b] font-bold border border-[#fed65b]/50 transition-all shadow-sm cursor-pointer hover:scale-105"
-              title="Website Owner Admin Portal"
-              aria-label="Admin Control Panel"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-[#fed65b]" />
-              <span>Admin</span>
-              {isAdminAuthenticated && (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" title="Admin Active" />
-              )}
-            </button>
+            {/* Website Owner Admin Console Button — strictly shown only after server checkAdminRole verification */}
+            {(isAdminAuthenticated || isAdminUser) && (
+              <button
+                id="topbar-admin-portal-btn"
+                onClick={() => setIsAdminOpen(true)}
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-0.5 rounded-full bg-[#163a2c] hover:bg-[#235843] text-xs text-[#fed65b] font-bold border border-[#fed65b]/50 transition-all shadow-sm cursor-pointer hover:scale-105"
+                title="Verified Owner Admin Portal"
+                aria-label="Admin Control Panel"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-[#fed65b]" />
+                <span>Admin</span>
+                {isAdminAuthenticated && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" title="Verified Admin Session Active" />
+                )}
+              </button>
+            )}
 
             {/* Currency Selector */}
             <div className="relative">
@@ -646,24 +648,26 @@ export const Header: React.FC = () => {
                 </button>
               )}
 
-              {/* Admin Portal Access for Website Owner */}
-              <button
-                id="header-admin-quick-btn"
-                onClick={() => setIsAdminOpen(true)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all text-[11px] font-extrabold shadow-sm border cursor-pointer ${
-                  isAdminAuthenticated
-                    ? 'bg-[#fed65b] hover:bg-[#ffe28a] text-[#012d1d] border-[#012d1d]/30 ring-1 ring-[#fed65b]/60'
-                    : 'bg-[#163a2c] hover:bg-[#235843] text-[#fed65b] border-[#fed65b]/40'
-                }`}
-                title="Website Owner Admin Control Center & Supabase Database"
-                aria-label="Admin Portal"
-              >
-                <ShieldCheck className={`w-3.5 h-3.5 ${isAdminAuthenticated ? 'text-[#012d1d]' : 'text-[#fed65b]'}`} />
-                <span className="hidden sm:inline">Admin</span>
-                {isAdminAuthenticated && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" title="Active Admin Session" />
-                )}
-              </button>
+              {/* Verified Owner Admin Portal Access — hidden from customers */}
+              {(isAdminAuthenticated || isAdminUser) && (
+                <button
+                  id="header-admin-quick-btn"
+                  onClick={() => setIsAdminOpen(true)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all text-[11px] font-extrabold shadow-sm border cursor-pointer ${
+                    isAdminAuthenticated
+                      ? 'bg-[#fed65b] hover:bg-[#ffe28a] text-[#012d1d] border-[#012d1d]/30 ring-1 ring-[#fed65b]/60'
+                      : 'bg-[#163a2c] hover:bg-[#235843] text-[#fed65b] border-[#fed65b]/40'
+                  }`}
+                  title="Verified Owner Admin Control Center"
+                  aria-label="Admin Portal"
+                >
+                  <ShieldCheck className={`w-3.5 h-3.5 ${isAdminAuthenticated ? 'text-[#012d1d]' : 'text-[#fed65b]'}`} />
+                  <span className="hidden sm:inline">Admin</span>
+                  {isAdminAuthenticated && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" title="Verified Admin Session" />
+                  )}
+                </button>
+              )}
 
               {/* Cart Button with Total Amount Badge */}
               <button
@@ -955,23 +959,25 @@ export const Header: React.FC = () => {
                 >
                   {t('bulkOrders')} / Corporate Inquiry
                 </button>
-                <button
-                  onClick={() => {
-                    setIsAdminOpen(true);
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="w-full text-left py-2 px-3 bg-[#012d1d] text-[#fed65b] rounded-lg text-sm font-bold shadow-sm flex items-center justify-between cursor-pointer border border-[#fed65b]/40"
-                >
-                  <span className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-[#fed65b]" />
-                    <span>Admin Control Center (Owner)</span>
-                  </span>
-                  {isAdminAuthenticated ? (
-                    <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-bold">Active</span>
-                  ) : (
-                    <span className="text-[10px] bg-[#fed65b] text-[#012d1d] px-2 py-0.5 rounded-full font-bold">Owner</span>
-                  )}
-                </button>
+                {(isAdminAuthenticated || isAdminUser) && (
+                  <button
+                    onClick={() => {
+                      setIsAdminOpen(true);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full text-left py-2 px-3 bg-[#012d1d] text-[#fed65b] rounded-lg text-sm font-bold shadow-sm flex items-center justify-between cursor-pointer border border-[#fed65b]/40"
+                  >
+                    <span className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-[#fed65b]" />
+                      <span>Admin Control Center</span>
+                    </span>
+                    {isAdminAuthenticated ? (
+                      <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-bold">Verified</span>
+                    ) : (
+                      <span className="text-[10px] bg-[#fed65b] text-[#012d1d] px-2 py-0.5 rounded-full font-bold">Confirm</span>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 

@@ -37,29 +37,41 @@ export const initGmailAuth = (
 
 /**
  * Sign in with Google and acquire Gmail OAuth Access Token
+ * Returns null if the user closes or cancels the popup window before completing sign-in.
  */
-export const connectGoogleGmail = async (): Promise<{ user: FirebaseUser; accessToken: string }> => {
+export const connectGoogleGmail = async (): Promise<{ user: FirebaseUser; accessToken: string } | null> => {
+  if (isSigningIn) return null;
+
   try {
     isSigningIn = true;
     const provider = new GoogleAuthProvider();
     GMAIL_SCOPES.forEach((scope) => provider.addScope(scope));
     provider.setCustomParameters({
-      prompt: 'select_account consent',
-      access_type: 'offline',
+      prompt: 'select_account',
     });
 
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
 
     if (!credential?.accessToken) {
-      throw new Error('Failed to acquire Gmail OAuth Access Token from Google');
+      throw new Error('Failed to acquire Gmail OAuth Access Token from Google. Please try again.');
     }
 
     cachedAccessToken = credential.accessToken;
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.error('[Gmail Auth Error]:', error);
-    throw error;
+    const code = error?.code || '';
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+      return null;
+    }
+    if (code === 'auth/popup-blocked') {
+      throw new Error('Sign-in popup was blocked by your browser. Please allow popups or open the app in a dedicated tab.');
+    }
+    if (code === 'auth/network-request-failed') {
+      throw new Error('Network error while connecting to Google. Please check your connection and try again.');
+    }
+    console.warn('[Gmail Auth Notice]:', code || error?.message || error);
+    throw new Error(error?.message || 'Failed to connect Gmail. Please try again.');
   } finally {
     isSigningIn = false;
   }

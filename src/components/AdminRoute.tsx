@@ -1,7 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { ShieldCheck, Lock, AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react';
-import { ADMIN_EMAILS } from '../lib/supabase';
 
 interface AdminRouteProps {
   children: React.ReactNode;
@@ -16,15 +15,14 @@ interface AdminRouteProps {
 export const AdminRoute: React.FC<AdminRouteProps> = ({ children, fallback }) => {
   const { 
     isAdminAuthenticated, 
-    isAdminUser, 
+    adminSessionToken,
     authLoading,
-    setIsAdminOpen,
-    showToast 
+    setIsAdminOpen
   } = useApp();
 
   const isVerifiedAdmin = Boolean(
-    isAdminAuthenticated || 
-    isAdminUser
+    isAdminAuthenticated &&
+    adminSessionToken
   );
 
   if (authLoading) {
@@ -60,7 +58,7 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children, fallback }) =>
 
         <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/40 text-[11px] text-amber-800 dark:text-amber-300 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>Authorized Admin Emails: {ADMIN_EMAILS[0]}</span>
+          <span>Access is restricted to verified store administrators only.</span>
         </div>
 
         <div className="pt-2 flex flex-col gap-2">

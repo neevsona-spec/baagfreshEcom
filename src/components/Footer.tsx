@@ -15,7 +15,7 @@ import { CATEGORIES } from '../data/products';
 import { BaagfreshLogo } from './BaagfreshLogo';
 
 export const Footer: React.FC = () => {
-  const { setSelectedCategory, setIsProfileOpen, setIsAdminOpen, setIsWholesaleOpen, storeSettings, isAdminAuthenticated } = useApp();
+  const { setSelectedCategory, setIsProfileOpen, setIsAdminOpen, setIsWholesaleOpen, storeSettings, isAdminAuthenticated, isAdminUser } = useApp();
 
   return (
     <footer className="bg-[#012417] text-[#FAF3E0] border-t border-[#1b4332] pt-12 pb-8">
@@ -159,18 +159,22 @@ export const Footer: React.FC = () => {
                   Corporate & Wedding Bulk Orders
                 </button>
               </li>
-              {isAdminAuthenticated && (
-                <li>
-                  <button
-                    id="footer-admin-btn"
-                    onClick={() => setIsAdminOpen(true)}
-                    className="text-[#fed65b]/90 hover:text-[#fed65b] transition-colors font-semibold flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Admin Control Center</span>
-                    <span className="text-[10px] bg-[#fed65b]/20 px-1.5 py-0.5 rounded border border-[#fed65b]/30">Portal</span>
-                  </button>
-                </li>
-              )}
+              <li>
+                <button
+                  id="footer-admin-btn"
+                  onClick={() => setIsAdminOpen(true)}
+                  className={
+                    isAdminAuthenticated || isAdminUser
+                      ? 'text-[#fed65b]/90 hover:text-[#fed65b] transition-colors font-semibold flex items-center gap-1 cursor-pointer'
+                      : 'text-slate-400 hover:text-[#fed65b] transition-colors text-xs flex items-center gap-1 cursor-pointer'
+                  }
+                >
+                  <span>{isAdminAuthenticated || isAdminUser ? 'Admin Control Center' : 'Owner Sign-In'}</span>
+                  {isAdminAuthenticated && (
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/30">Verified</span>
+                  )}
+                </button>
+              </li>
             </ul>
           </div>
         </div>

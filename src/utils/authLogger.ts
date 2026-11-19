@@ -223,11 +223,13 @@ class AuthLoggerService {
 
     let diagnosticAdvice = 'Check your network connection and retry.';
     if (code === 'auth/popup-blocked') {
-      diagnosticAdvice = 'Browser popup blocker or iframe sandbox blocked the Google Sign-in window. Suggest opening in a new dedicated tab or using 1-Click Owner Auth.';
+      diagnosticAdvice = 'Browser popup blocker or iframe sandbox blocked the Google Sign-In window. Open the app in a dedicated tab and retry.';
     } else if (code === 'auth/popup-closed-by-user') {
-      diagnosticAdvice = 'The Google login window was closed before completing verification. Ensure popups are allowed and try clicking Continue with Google again.';
+      diagnosticAdvice = 'The Google login window was closed before completing verification. Please try again.';
     } else if (code === 'auth/unauthorized-domain') {
-      diagnosticAdvice = 'This preview domain is not listed in Firebase Console > Authentication > Settings > Authorized Domains. Add this domain in Firebase Console or use 1-Click Master Access.';
+      diagnosticAdvice = 'This domain is not listed in Firebase Console > Authentication > Settings > Authorized Domains.';
+    } else if (code === 'auth/operation-not-allowed') {
+      diagnosticAdvice = 'This sign-in provider is disabled in Firebase Authentication. Use Verified Google Sign-In.';
     } else if (code === 'auth/cancelled-popup-request') {
       diagnosticAdvice = 'Multiple popup requests were initiated in rapid succession. Previous pending request was aborted.';
     } else if (code === 'auth/network-request-failed') {
@@ -237,22 +239,15 @@ class AuthLoggerService {
     this.log({
       phase: 'AUTH_ERROR',
       step: this.stepCounter++,
-      message: `❌ ${contextNote} failed with code [${code}]: ${message}`,
+      message: `${contextNote} notice [${code}]: ${message}`,
       durationMs: elapsed,
       data: {
         errorCode: code,
         errorMessage: message,
-        stack: error?.stack,
         diagnosticAdvice,
-        suggestedFix: diagnosticAdvice
       },
-      status: 'error'
+      status: 'warn'
     });
-
-    console.warn(
-      `%c[AUTH-DIAGNOSTIC] ${code}: ${diagnosticAdvice}`,
-      'background: #450a0a; color: #f87171; font-weight: bold; padding: 4px 8px; border-radius: 4px;'
-    );
   }
 
   /**
@@ -266,7 +261,7 @@ class AuthLoggerService {
       step: this.stepCounter++,
       message: `Authentication lifecycle concluded with status [${status.toUpperCase()}] in ${totalDuration}ms. ${summaryNote || ''}`,
       durationMs: totalDuration,
-      status: status === 'success' || status === 'fallback_used' ? 'success' : 'error'
+      status: status === 'success' || status === 'fallback_used' ? 'success' : 'warn'
     });
 
     console.table(
@@ -300,16 +295,7 @@ class AuthLoggerService {
 
     const prefix = `[Step ${entry.step}] [${entry.phase}]`;
     
-    if (entry.status === 'error') {
-      console.error(
-        `%c${timestamp}%c %c${prefix}%c ${entry.message}`,
-        this.styles.timestamp,
-        '',
-        statusStyle,
-        '',
-        entry.data || ''
-      );
-    } else if (entry.status === 'warn') {
+    if (entry.status === 'error' || entry.status === 'warn') {
       console.warn(
         `%c${timestamp}%c %c${prefix}%c ${entry.message}`,
         this.styles.timestamp,

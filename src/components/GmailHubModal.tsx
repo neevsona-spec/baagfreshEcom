@@ -42,10 +42,11 @@ export const GmailHubModal: React.FC<GmailHubModalProps> = ({
   initialOrder,
   initialInquiry,
 }) => {
-  const { orders, wholesaleInquiries, showToast, user } = useApp();
+  const { orders, wholesaleInquiries, showToast, getAdminAuthHeaders } = useApp();
   const [profile, setProfile] = useState<GmailProfile | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [smtpStatus, setSmtpStatus] = useState<{
     configured: boolean;
     authMode: string;
@@ -113,12 +114,17 @@ export const GmailHubModal: React.FC<GmailHubModalProps> = ({
   const handleTestSmtpRelay = async () => {
     try {
       setLoading(true);
-      const adminEmail = user?.email || profile?.emailAddress || 'neevsona@gmail.com';
+      const authHeaders = await getAdminAuthHeaders();
+      if (!authHeaders) {
+        showToast('Verified administrator confirmation is required to run SMTP relay diagnostics.', 'error');
+        return;
+      }
       const res = await fetch('/api/email/verify', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-email': adminEmail,
+          ...authHeaders,
         },
       });
       const data = await res.json();
@@ -166,14 +172,23 @@ export const GmailHubModal: React.FC<GmailHubModalProps> = ({
   const handleConnectGmail = async () => {
     try {
       setLoading(true);
+      setAuthNotice(null);
       const res = await connectGoogleGmail();
+      if (!res) {
+        setAuthNotice('Sign-in popup was closed before completing authorization. Allow popups or open in a dedicated tab if your browser closes it automatically.');
+        showToast('Google sign-in popup was closed. Try again when ready.', 'info');
+        return;
+      }
       const prof = await fetchGmailProfile();
       setProfile(prof);
       setIsConnected(true);
+      setAuthNotice(null);
       showToast(`Connected as ${prof.emailAddress}`, 'success');
       loadRecentEmails();
     } catch (err: any) {
-      showToast(err.message || 'Failed to connect Gmail', 'error');
+      const msg = err?.message || 'Failed to connect Gmail';
+      setAuthNotice(msg);
+      showToast(msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -428,6 +443,24 @@ export const GmailHubModal: React.FC<GmailHubModalProps> = ({
             )}
           </div>
         </div>
+
+        {authNotice && !isConnected && (
+          <div className="px-4 py-2.5 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/60 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>{authNotice}</span>
+            </div>
+            <a
+              href={typeof window !== 'undefined' ? window.location.href : '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 font-bold text-[#012d1d] dark:text-[#fed65b] hover:underline shrink-0"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Open in New Tab</span>
+            </a>
+          </div>
+        )}
 
         {smtpStatus && (
           <div className="px-4 py-2 bg-slate-100/80 dark:bg-[#091811] border-b border-slate-200 dark:border-[#275943]/40 flex flex-wrap items-center justify-between gap-2 text-[11px]">

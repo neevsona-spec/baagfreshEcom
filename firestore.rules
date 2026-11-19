@@ -4,18 +4,19 @@ service cloud.firestore {
     function isSignedIn() {
       return request.auth != null;
     }
-    
-    // Admin check against trusted /admins/{uid} collection or bootstrapped master admin email
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Strict Admin check: existing /admins/{uid} record OR verified owner email with email_verified == true
     function isAdmin() {
       return isSignedIn() && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        request.auth.token.email in [
-          'neevsona@gmail.com',
-          'baagfresh@gmail.com',
-          'admin@baagfresh.in',
-          'maan1986@gmail.com',
-          'admin@baagfresh.com'
-        ]
+        (
+          request.auth.token.email_verified == true &&
+          request.auth.token.email == 'neevsona@gmail.com'
+        )
       );
     }
 
@@ -24,62 +25,79 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Admins registry - restricted to admins and self-registration for authorized admins
+    // Admins registry - NEVER allow arbitrary users to self-register; only verified admins may manage
     match /admins/{adminId} {
-      allow read: if isSignedIn() && (request.auth.uid == adminId || isAdmin());
-      allow write: if isSignedIn() && (request.auth.uid == adminId || isAdmin());
+      allow read: if isSignedIn() && isValidId(adminId) && (request.auth.uid == adminId || isAdmin());
+      allow write: if isValidId(adminId) && isAdmin();
     }
 
-    // User profiles - customers can only read and write their own profile; admins can read and manage
+    // User profiles - customers can only read and write their own profile; cannot assign admin/role fields
     match /users/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow create, update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow delete: if isAdmin();
+      allow read: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow create: if isSignedIn() && isValidId(userId) && request.auth.uid == userId
+        && !('role' in request.resource.data)
+        && !('isAdmin' in request.resource.data)
+        && !('isSuperAdmin' in request.resource.data);
+      allow update: if isValidId(userId) && (
+        isAdmin() ||
+        (
+          isSignedIn() && request.auth.uid == userId &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isAdmin', 'isSuperAdmin', 'permissions'])
+        )
+      );
+      allow delete: if isValidId(userId) && isAdmin();
     }
 
-    // Customer orders - customers access their own orders; admins can manage all orders
+    // Customer orders - customers read/create their own orders; only admins can alter totals/payment/fulfillment
     match /orders/{orderId} {
-      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow delete: if isAdmin();
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(orderId) && request.resource.data.userId == request.auth.uid;
+      allow update: if isValidId(orderId) && (
+        isAdmin() ||
+        (
+          isSignedIn() &&
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+          request.resource.data.status == 'cancelled'
+        )
+      );
+      allow delete: if isValidId(orderId) && isAdmin();
     }
 
     // Customer wishlists - private to the user
     match /wishlists/{userId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow read, write: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
     }
 
     // Product reviews - public to read, verified create, owner/admin update & delete
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(reviewId) && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && isValidId(reviewId) && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     // Live Product Catalog - public read, admin write/manage
     match /products/{productId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isValidId(productId) && isAdmin();
     }
 
     // Store Settings & Live Website Content - public read, admin write
     match /store_settings/{settingId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isValidId(settingId) && isAdmin();
     }
 
     // Promo Codes - public read for validation, admin write
     match /promos/{promoId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isValidId(promoId) && isAdmin();
     }
 
-    // Wholesale Inquiries - public submit, admin manage
+    // Wholesale Inquiries - public submit only; PII reads/updates/deletes strictly restricted to Admin
     match /wholesale_inquiries/{inquiryId} {
-      allow create: if true;
-      allow read: if true;
-      allow update, delete: if isAdmin();
+      allow create: if isValidId(inquiryId);
+      allow read, update, delete: if isAdmin();
     }
   }
 }

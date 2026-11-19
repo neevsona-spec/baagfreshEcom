@@ -17,7 +17,11 @@ import {
 import { PRODUCTS } from '../data/products';
 import { CURRENCIES, formatCurrencyPrice } from '../data/currencies';
 import { TRANSLATIONS } from '../data/translations';
+import { onAuthStateChanged } from 'firebase/auth';
 import { 
+  auth,
+  getFreshFirebaseIdToken,
+  logOut as firebaseLogOut,
   syncUserProfile, 
   updateUserInFirestore, 
   saveOrderToFirestore, 
@@ -38,8 +42,7 @@ import {
   subscribeToWholesaleInquiries,
   saveWholesaleInquiryToFirestore,
   updateWholesaleInquiryInFirestore,
-  deleteWholesaleInquiryFromFirestore,
-  ADMIN_EMAILS
+  deleteWholesaleInquiryFromFirestore
 } from '../lib/firebase';
 import { LocalAuthManager } from '../services/LocalAuthManager';
 import { 
@@ -50,7 +53,9 @@ import {
   apiCreateOrder,
   apiFetchOrders,
   apiUpdateOrderStatus,
-  apiCustomerAuth
+  apiCustomerAuth,
+  apiCheckAdminRole,
+  apiAdminLogout
 } from '../lib/supabase';
 
 export function generateTrackingSteps(status: string): TrackingStep[] {
@@ -353,12 +358,17 @@ interface AppContextType {
   trackingOrder: Order | null;
   setTrackingOrder: (order: Order | null) => void;
 
-  // Admin Control Center
+  // Admin Control Center (Strictly server-verified via /api/auth/checkAdminRole)
   isAdminOpen: boolean;
   setIsAdminOpen: (open: boolean) => void;
   isAdminAuthenticated: boolean;
   setIsAdminAuthenticated: (auth: boolean) => void;
   isAdminUser: boolean;
+  setIsAdminUser: (isAdmin: boolean) => void;
+  adminSessionToken: string | null;
+  setAdminSessionToken: (token: string | null) => void;
+  getAdminAuthHeaders: () => Promise<Record<string, string> | null>;
+  logoutAdminSession: () => Promise<void>;
 
   // Gmail Workspace Integration
   isGmailHubOpen: boolean;
@@ -823,14 +833,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (updates.whatsappNumber || updates.supportPhone) {
         const targetWa = (updates.whatsappNumber || updated.whatsappNumber || updated.supportPhone || '').trim();
         if (targetWa) {
-          fetch('/api/whatsapp/config', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-admin-email': user?.email || 'neevsona@gmail.com',
-            },
-            body: JSON.stringify({ whatsappNumber: targetWa }),
-          }).catch(() => {});
+          getAdminAuthHeaders().then((headers) => {
+            if (!headers) return;
+            fetch('/api/whatsapp/config', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: {
+                'Content-Type': 'application/json',
+                ...headers,
+              },
+              body: JSON.stringify({ whatsappNumber: targetWa }),
+            }).catch(() => {});
+          });
         }
       }
       return updated;
@@ -982,19 +996,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Admin Modal & Auth
+  // Admin Modal & Auth — NEVER initialized from localStorage or URL params.
+  // Authoritative approval is strictly granted by server-side /api/auth/checkAdminRole.
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [isAdminUser, setIsAdminUser] = useState<boolean>(false);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
+  const [adminSessionToken, setAdminSessionToken] = useState<string | null>(null);
+
+  // Purge any legacy insecure browser-storage admin flags on load
+  useEffect(() => {
     try {
-      return (
-        localStorage.getItem('baagfresh_admin_session') === 'active' ||
-        sessionStorage.getItem('baagfresh_admin_session') === 'active'
-      );
+      localStorage.removeItem('baagfresh_admin_session');
+      sessionStorage.removeItem('baagfresh_admin_session');
     } catch {
-      return false;
+      // ignore storage errors
     }
-  });
+  }, []);
+
+  // Synchronize Firebase Auth state with server-side /api/auth/checkAdminRole
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (!fbUser) {
+        setIsAdminUser(false);
+        setIsAdminAuthenticated(false);
+        setAdminSessionToken(null);
+        return;
+      }
+
+      try {
+        const idToken = await fbUser.getIdToken();
+        const roleResult = await apiCheckAdminRole(idToken, { action: 'check' });
+        if (roleResult.isAdmin && roleResult.authorized) {
+          setIsAdminUser(true);
+          if (roleResult.confirmed && roleResult.sessionToken) {
+            setAdminSessionToken(roleResult.sessionToken);
+            setIsAdminAuthenticated(true);
+          } else {
+            // Identity verified, awaiting explicit owner confirmation in AdminPanel
+            setAdminSessionToken(null);
+            setIsAdminAuthenticated(false);
+          }
+        } else {
+          setIsAdminUser(false);
+          setIsAdminAuthenticated(false);
+          setAdminSessionToken(null);
+        }
+      } catch {
+        setIsAdminUser(false);
+        setIsAdminAuthenticated(false);
+        setAdminSessionToken(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Gmail Workspace State
   const [isGmailHubOpen, setIsGmailHubOpen] = useState<boolean>(false);
@@ -1014,17 +1069,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const handleSetAdminAuth = (authStatus: boolean) => {
-    setIsAdminAuthenticated(authStatus);
+    if (!authStatus) {
+      setIsAdminAuthenticated(false);
+      setAdminSessionToken(null);
+    } else {
+      setIsAdminAuthenticated(true);
+    }
     try {
-      if (authStatus) {
-        localStorage.setItem('baagfresh_admin_session', 'active');
-        sessionStorage.setItem('baagfresh_admin_session', 'active');
-      } else {
-        localStorage.removeItem('baagfresh_admin_session');
-        sessionStorage.removeItem('baagfresh_admin_session');
-      }
-    } catch (e) {
-      console.warn('Storage sync error:', e);
+      localStorage.removeItem('baagfresh_admin_session');
+      sessionStorage.removeItem('baagfresh_admin_session');
+    } catch {
+      // ignore
+    }
+  };
+
+  const getAdminAuthHeaders = async (): Promise<Record<string, string> | null> => {
+    if (!isAdminAuthenticated || !adminSessionToken) return null;
+    const idToken = await getFreshFirebaseIdToken(false);
+    if (!idToken) return null;
+    return {
+      'Authorization': `Bearer ${idToken}`,
+      'x-admin-approval-token': adminSessionToken,
+    };
+  };
+
+  const logoutAdminSession = async () => {
+    const tokenToRevoke = adminSessionToken;
+    setIsAdminAuthenticated(false);
+    setIsAdminUser(false);
+    setAdminSessionToken(null);
+    try {
+      localStorage.removeItem('baagfresh_admin_session');
+      sessionStorage.removeItem('baagfresh_admin_session');
+    } catch {
+      // ignore
+    }
+    await apiAdminLogout(tokenToRevoke);
+    try {
+      await firebaseLogOut();
+    } catch {
+      // ignore
     }
   };
 
@@ -1147,27 +1231,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // User & Auth State
   const [authLoading, setAuthLoading] = useState<boolean>(false);
   const [user, setUser] = useState<UserProfile | null>(null);
-
-  // Admin User Check
-  useEffect(() => {
-    if (user && user.email) {
-      const isMasterAdmin = ADMIN_EMAILS.includes(user.email.toLowerCase().trim());
-      setIsAdminUser(isMasterAdmin);
-    } else {
-      setIsAdminUser(false);
-    }
-  }, [user]);
   const [orders, setOrders] = useState<Order[]>([]);
 
-  // Fetch orders from Supabase backend
+  // Fetch orders from backend (Admin scope requires server-verified Firebase ID token + confirmed session)
   const fetchOrdersFromSupabase = async (phoneFilter?: string) => {
     try {
       const effectivePhone = phoneFilter || user?.phone;
-      console.log('Fetching live orders from Supabase. isAdminUser:', isAdminUser, 'isAdminAuthenticated:', isAdminAuthenticated, 'Phone:', effectivePhone);
-      
+
       let rawOrders: any[] = [];
-      if (isAdminUser || isAdminAuthenticated) {
-        rawOrders = await apiFetchOrders({ adminEmail: user?.email || 'admin@baagfresh.in' });
+      if (isAdminAuthenticated && adminSessionToken) {
+        const idToken = await getFreshFirebaseIdToken(false);
+        if (idToken) {
+          rawOrders = await apiFetchOrders({
+            adminIdToken: idToken,
+            adminSessionToken,
+          });
+        }
       } else if (effectivePhone) {
         rawOrders = await apiFetchOrders({ phone: effectivePhone });
       } else {
@@ -1214,10 +1293,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuthLoading(false);
   }, []);
 
-  // Fetch orders when user changes or admin toggles
+  // Fetch orders when user changes or server-confirmed admin session updates
   useEffect(() => {
     fetchOrdersFromSupabase(user?.phone);
-  }, [user?.phone, isAdminUser, isAdminAuthenticated]);
+  }, [user?.phone, isAdminAuthenticated, adminSessionToken]);
 
   // Customer Login with Phone & Name via Supabase
   const loginCustomerWithPhone = async (
@@ -1367,10 +1446,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const signOutUser = async () => {
     localStorage.removeItem('baagfresh_active_user');
-    setIsAdminUser(false);
-    handleSetAdminAuth(false);
+    await logoutAdminSession();
     setUser(null);
-    fetchOrdersFromSupabase();
+    setOrders([]);
     showToast('Signed out of account', 'info');
   };
 
@@ -1681,7 +1759,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const cancelOrder = async (orderId: string) => {
     try {
-      await apiUpdateOrderStatus(orderId, 'Cancelled');
+      const idToken = isAdminAuthenticated && adminSessionToken ? await getFreshFirebaseIdToken(false) : null;
+      await apiUpdateOrderStatus(orderId, 'Cancelled', undefined, {
+        adminIdToken: idToken,
+        adminSessionToken,
+        customerPhone: user?.phone || undefined,
+      });
       setOrders((prev) =>
         prev.map((o) =>
           o.id === orderId || o.orderNumber === orderId
@@ -1689,10 +1772,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : o
         )
       );
-      showToast(`Order #${orderId} cancellation updated in Supabase`, 'info');
+      showToast(`Order #${orderId} cancellation updated`, 'info');
     } catch (err: any) {
-      console.error('Failed to cancel order in Supabase:', err);
-      showToast('Failed to cancel order in database', 'error');
+      console.error('Failed to cancel order:', err);
+      showToast(err?.message || 'Failed to cancel order in database', 'error');
     }
   };
 
@@ -1755,11 +1838,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     try {
-      await apiUpdateOrderStatus(orderId, dbStatus, customNote);
-      showToast(`Order status updated to "${dbStatus}" in Supabase!`, 'success');
+      const idToken = isAdminAuthenticated && adminSessionToken ? await getFreshFirebaseIdToken(false) : null;
+      if (!idToken || !adminSessionToken) {
+        throw new Error('Verified administrator approval is required to update order status.');
+      }
+      await apiUpdateOrderStatus(orderId, dbStatus, customNote, {
+        adminIdToken: idToken,
+        adminSessionToken,
+      });
+      showToast(`Order status updated to "${dbStatus}"!`, 'success');
     } catch (err: any) {
-      console.error('Supabase status update exception:', err);
-      showToast(`Failed to update order status in Supabase: ${err?.message || ''}`, 'error');
+      console.error('Order status update exception:', err);
+      showToast(`Failed to update order status: ${err?.message || ''}`, 'error');
     }
   };
 
@@ -1842,6 +1932,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAdminAuthenticated,
         setIsAdminAuthenticated: handleSetAdminAuth,
         isAdminUser,
+        setIsAdminUser,
+        adminSessionToken,
+        setAdminSessionToken,
+        getAdminAuthHeaders,
+        logoutAdminSession,
         isGmailHubOpen,
         setIsGmailHubOpen,
         gmailHubInitialOrder,

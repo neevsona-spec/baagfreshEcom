@@ -23,12 +23,8 @@ const supabaseAnonKey = rawKey || defaultSupabaseAnonKey;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export const ADMIN_EMAILS = [
-  'neevsona@gmail.com',
-  'admin@baagfresh.in',
-  'admin@baagfresh.com',
-  'maan1986@gmail.com'
-];
+// Admin authorization is strictly verified server-side via /api/auth/checkAdminRole.
+// Never store or trust admin email allowlists in client-side code.
 
 let resolvedOrderTable: string = 'Order';
 export const getResolvedOrderTable = () => resolvedOrderTable;
@@ -126,7 +122,98 @@ export async function apiCreateOrder(orderPayload: any): Promise<{ order: any; e
   };
 }
 
-export async function apiFetchOrders(params?: { phone?: string; adminEmail?: string; orderId?: string }): Promise<any[]> {
+export interface AdminRoleCheckResponse {
+  success: boolean;
+  isAdmin: boolean;
+  authorized: boolean;
+  approved: boolean;
+  confirmed: boolean;
+  requiresConfirmation?: boolean;
+  approvalChallenge?: string;
+  sessionToken?: string;
+  role?: string;
+  authProvider?: string;
+  expiresInSeconds?: number;
+  code?: string;
+  error?: string;
+}
+
+/**
+ * Call the server-side /api/auth/checkAdminRole endpoint with a live Firebase ID Token.
+ */
+export async function apiCheckAdminRole(
+  idToken: string,
+  options?: {
+    action?: 'check' | 'confirm';
+    approvalChallenge?: string;
+    sessionToken?: string | null;
+  }
+): Promise<AdminRoleCheckResponse> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${idToken}`,
+  };
+  if (options?.sessionToken) {
+    headers['x-admin-approval-token'] = options.sessionToken;
+  }
+
+  const response = await fetch('/api/auth/checkAdminRole', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers,
+    body: JSON.stringify({
+      action: options?.action || 'check',
+      approvalChallenge: options?.approvalChallenge || undefined,
+    }),
+  });
+
+  const rawText = await response.text();
+  let data: any = {};
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    throw new Error(`Server returned invalid response (Status ${response.status})`);
+  }
+
+  if (!response.ok || !data?.success) {
+    const errMsg = data?.error || `Administrative verification denied (HTTP ${response.status})`;
+    const err: any = new Error(errMsg);
+    err.code = data?.code;
+    err.status = response.status;
+    err.retryAfterSeconds = data?.retryAfterSeconds;
+    throw err;
+  }
+
+  return data as AdminRoleCheckResponse;
+}
+
+/**
+ * Revoke server-side confirmed admin session and clear HttpOnly cookie.
+ */
+export async function apiAdminLogout(sessionToken?: string | null): Promise<void> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (sessionToken) {
+    headers['x-admin-approval-token'] = sessionToken;
+  }
+  try {
+    await fetch('/api/auth/adminLogout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+    });
+  } catch {
+    // Non-blocking logout cleanup
+  }
+}
+
+export async function apiFetchOrders(params?: {
+  phone?: string;
+  orderId?: string;
+  adminIdToken?: string | null;
+  adminSessionToken?: string | null;
+}): Promise<any[]> {
   const url = new URL('/api/orders', window.location.origin);
   if (params?.phone) url.searchParams.set('phone', params.phone);
   if (params?.orderId) url.searchParams.set('orderId', params.orderId);
@@ -135,9 +222,9 @@ export async function apiFetchOrders(params?: { phone?: string; adminEmail?: str
     'Content-Type': 'application/json',
   };
 
-  if (params?.adminEmail) {
-    headers['x-admin-email'] = params.adminEmail;
-    headers['Authorization'] = `Bearer ${params.adminEmail}`;
+  if (params?.adminIdToken && params?.adminSessionToken) {
+    headers['Authorization'] = `Bearer ${params.adminIdToken}`;
+    headers['x-admin-approval-token'] = params.adminSessionToken;
   }
 
   if (params?.phone) {
@@ -146,6 +233,7 @@ export async function apiFetchOrders(params?: { phone?: string; adminEmail?: str
 
   const data = await safeFetchJson<{ success: boolean; order?: any; orders?: any[] }>(url.toString(), {
     method: 'GET',
+    credentials: 'same-origin',
     headers,
   });
 
@@ -156,10 +244,36 @@ export async function apiFetchOrders(params?: { phone?: string; adminEmail?: str
   return data.orders || [];
 }
 
-export async function apiUpdateOrderStatus(orderId: string, status: string, customNote?: string): Promise<any> {
+export async function apiUpdateOrderStatus(
+  orderId: string,
+  status: string,
+  customNote?: string,
+  authOptions?: {
+    adminIdToken?: string | null;
+    adminSessionToken?: string | null;
+    customerPhone?: string | null;
+  }
+): Promise<any> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (authOptions?.adminIdToken && authOptions?.adminSessionToken) {
+    headers['Authorization'] = `Bearer ${authOptions.adminIdToken}`;
+    headers['x-admin-approval-token'] = authOptions.adminSessionToken;
+  }
+  if (authOptions?.customerPhone) {
+    headers['x-user-phone'] = authOptions.customerPhone;
+  }
+
   const data = await safeFetchJson<{ success: boolean; order: any }>(`/api/orders/${encodeURIComponent(orderId)}/status`, {
     method: 'PATCH',
-    body: JSON.stringify({ status, note: customNote }),
+    credentials: 'same-origin',
+    headers,
+    body: JSON.stringify({
+      status,
+      note: customNote,
+      customerPhone: authOptions?.customerPhone || undefined,
+    }),
   });
 
   return data.order;

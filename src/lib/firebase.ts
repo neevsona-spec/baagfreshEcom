@@ -105,27 +105,17 @@ export const signInWithGoogle = async (): Promise<FirebaseUser> => {
 };
 
 /**
- * Direct Instant Superadmin login for authorized owners (bypasses iframe popup block)
+ * Obtain a fresh cryptographically signed Firebase ID Token for server-side verification
  */
-export const signInAsSuperAdminDirect = async (
-  email: string = 'neevsona@gmail.com'
-): Promise<{ email: string; name: string; uid: string }> => {
-  const cleanEmail = email.toLowerCase().trim();
-  const uid = `admin-${cleanEmail.replace(/[^a-z0-9]/g, '-')}`;
-  
-  // Proactively ensure document in /admins/{uid} collection is persisted
-  await ensureAdminRecordInFirestore(
-    uid,
-    cleanEmail,
-    'superadmin',
-    cleanEmail === 'neevsona@gmail.com' ? 'Neev Sona (Super Administrator)' : 'Master Administrator'
-  );
-  
-  return {
-    email: cleanEmail,
-    name: cleanEmail === 'neevsona@gmail.com' ? 'Neev Sona (Super Administrator)' : 'Master Administrator',
-    uid
-  };
+export const getFreshFirebaseIdToken = async (forceRefresh = false): Promise<string | null> => {
+  const current = auth.currentUser;
+  if (!current) return null;
+  try {
+    return await current.getIdToken(forceRefresh);
+  } catch (err) {
+    console.warn('Unable to retrieve Firebase ID token:', err);
+    return null;
+  }
 };
 
 /**
@@ -300,65 +290,20 @@ export const saveWishlistToFirestore = async (userId: string, productIds: string
   });
 };
 
-export const ADMIN_EMAILS = [
-  'neevsona@gmail.com',
-  'admin@baagfresh.in',
-  'maan1986@gmail.com',
-  'admin@baagfresh.com'
-];
-
 /**
- * Grant or ensure administrator role in Firestore /admins collection
+ * Check whether a user has an existing administrator record in Firestore /admins/{uid}
+ * Authoritative verification is enforced server-side via /api/auth/checkAdminRole.
  */
-export const ensureAdminRecordInFirestore = async (
-  uid: string,
-  email: string,
-  role: string = 'superadmin',
-  title: string = 'Master Administrator'
-): Promise<void> => {
-  try {
-    const adminRef = doc(db, 'admins', uid);
-    await setDoc(adminRef, {
-      uid,
-      email: email.toLowerCase().trim(),
-      role,
-      title,
-      isSuperAdmin: true,
-      permissions: ['all', 'catalog', 'orders', 'promos', 'inquiries', 'settings', 'users'],
-      assignedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      status: 'active'
-    }, { merge: true });
-  } catch (err) {
-    console.warn('Error saving admin record to Firestore /admins:', err);
-  }
-};
-
-/**
- * Check whether a user is an administrator via Firestore admins collection or trusted bootstrap email
- */
-export const checkIsAdmin = async (uid: string, email?: string | null): Promise<boolean> => {
-  const normalizedEmail = email ? email.toLowerCase().trim() : '';
-  const isMasterAdminEmail = normalizedEmail ? ADMIN_EMAILS.includes(normalizedEmail) : false;
-
-  if (isMasterAdminEmail) {
-    // Proactively ensure document in /admins/{uid} collection is persisted
-    try {
-      await ensureAdminRecordInFirestore(uid, normalizedEmail, 'superadmin', 'Master Administrator');
-    } catch (e) {
-      console.warn('Could not auto-write /admins doc:', e);
-    }
-    return true;
-  }
-
+export const checkIsAdmin = async (uid: string): Promise<boolean> => {
+  if (!uid) return false;
   try {
     const adminDoc = await getDoc(doc(db, 'admins', uid));
     if (adminDoc.exists()) {
       const data = adminDoc.data();
-      return data?.role === 'superadmin' || data?.role === 'admin' || data?.isSuperAdmin === true || data?.status === 'active';
+      return data?.role === 'superadmin' || data?.role === 'admin' || data?.isSuperAdmin === true;
     }
-  } catch (err) {
-    // Document does not exist or unauthenticated
+  } catch {
+    // Document does not exist or permission denied
   }
   return false;
 };

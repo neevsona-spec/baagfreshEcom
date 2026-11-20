@@ -67,9 +67,80 @@ function formatAddressLine(addr: WhatsAppOrderInput['shippingAddress']): string 
     .join(', ');
 }
 
-function formatInr(amount: number): string {
-  return `₹${Number(amount || 0).toLocaleString('en-IN')}`;
+export function formatExactInr(amount: number): string {
+  const num = Number(amount || 0);
+  const rounded = Math.round(num * 100) / 100;
+  const isWhole = Math.abs(rounded - Math.round(rounded)) < 0.001;
+  return `₹${rounded.toLocaleString('en-IN', {
+    minimumFractionDigits: isWhole ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
+
+function formatInr(amount: number): string {
+  return formatExactInr(amount);
+}
+
+export interface WhatsAppEnquiryInput {
+  items: WhatsAppOrderItem[];
+  subtotal: number;
+  discount?: number;
+  promoCode?: string;
+  gstRatePercent: number;
+  gstAmount: number;
+  grandTotal: number;
+  customerMobile: string;
+}
+
+export function isValidCustomerMobile(rawPhone: string): boolean {
+  const digits = String(rawPhone || '').replace(/[^\d]/g, '');
+  return digits.length >= 10 && digits.length <= 15;
+}
+
+/**
+ * Generates a clean WhatsApp order enquiry message with complete product list,
+ * quantities, unit prices, item totals, subtotal, Indian GST, grand total,
+ * and ONLY the customer's mobile number.
+ */
+export function formatWhatsAppCartEnquiryMessage(enquiry: WhatsAppEnquiryInput): string {
+  const gstRate = Number.isFinite(enquiry.gstRatePercent) ? enquiry.gstRatePercent : 5;
+  const halfGstRate = Number((gstRate / 2).toFixed(2));
+  const cgstAmount = Math.round((enquiry.gstAmount / 2) * 100) / 100;
+  const sgstAmount = Math.round((enquiry.gstAmount - cgstAmount) * 100) / 100;
+
+  const itemLines = enquiry.items.map((item, idx) => {
+    const unitPrice = Number(item.price || 0);
+    const qty = Number(item.quantity || 1);
+    const itemTotal = unitPrice * qty;
+    const weightTag = item.weight ? ` (${item.weight})` : '';
+    return `${idx + 1}. *${item.name}*${weightTag}\n   Qty: ${qty} × ${formatExactInr(unitPrice)} = *${formatExactInr(itemTotal)}*`;
+  });
+
+  const lines = [
+    `*BAAGFRESH — WHATSAPP ORDER ENQUIRY*`,
+    `━━━━━━━━━━━━━━━━━━━━━━`,
+    `*ORDER LIST*`,
+    ...itemLines,
+    ``,
+    `━━━━━━━━━━━━━━━━━━━━━━`,
+    `*PRICE & GST SUMMARY*`,
+    `• Subtotal: ${formatExactInr(enquiry.subtotal)}`,
+    ...(enquiry.discount && enquiry.discount > 0
+      ? [
+          `• Discount${enquiry.promoCode ? ` (${enquiry.promoCode})` : ''}: -${formatExactInr(enquiry.discount)}`,
+        ]
+      : []),
+    `• GST (${gstRate}% — CGST ${halfGstRate}% ${formatExactInr(cgstAmount)} + SGST ${halfGstRate}% ${formatExactInr(sgstAmount)}): ${formatExactInr(enquiry.gstAmount)}`,
+    `• *Grand Total: ${formatExactInr(enquiry.grandTotal)}*`,
+    `━━━━━━━━━━━━━━━━━━━━━━`,
+    `*Customer Mobile:* ${enquiry.customerMobile.trim()}`,
+    ``,
+    `Please confirm availability and next steps for this enquiry.`,
+  ];
+
+  return lines.join('\n');
+}
+
 
 /**
  * Generates a structured List Template for a single order (sent to store owner's official WhatsApp)

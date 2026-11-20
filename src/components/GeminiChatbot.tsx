@@ -308,20 +308,15 @@ export const GeminiChatbot: React.FC = () => {
           // Handle Button tags [BUTTON:type:id]
           const buttonMatch = line.match(/\[BUTTON:([a-z-]+):([a-zA-Z0-9_-]+)\]/);
           if (buttonMatch) {
-            const [fullMatch, type, id] = buttonMatch;
-            const label = type === 'track-order' ? 'Track Live' : 'View Order';
             return (
               <button
                 key={idx}
                 onClick={() => {
-                  if (type === 'track-order') {
-                    // Logic to open order modal
-                    showToast(`Opening tracking for order #${id}`, 'info');
-                  }
+                  showToast('Please contact BAAGFRESH directly on WhatsApp for order assistance.', 'info');
                 }}
                 className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#fed65b] text-[#012d1d] font-bold text-[11px] shadow-sm hover:bg-[#ffe07a] transition-all cursor-pointer"
               >
-                {label}
+                Chat on WhatsApp
                 <ExternalLink className="w-3 h-3" />
               </button>
             );

@@ -18,7 +18,6 @@ import medjoolDatesImg from '../assets/images/regenerated_image_1786885958518.pn
 import blackPepperImg from '../assets/images/regenerated_image_1786885964083.png';
 import superfoodSeedsImg from '../assets/images/regenerated_image_1786959981759.png';
 import cranberriesImg from '../assets/images/regenerated_image_1786959986461.png';
-import royalGiftHamperImg from '../assets/images/products/royal-gift-trunk-main.jpg';
 import greenRaisinsImg from '../assets/images/regenerated_image_1786885985674.png';
 import clovesWholeImg from '../assets/images/products/cloves-whole.jpg';
 import cinnamonQuillsImg from '../assets/images/regenerated_image_1787092667382.png';
@@ -28,7 +27,6 @@ import apricotsImg from '../assets/images/regenerated_image_1787094151886.webp';
 import pumpkinSeedsImg from '../assets/images/regenerated_image_1787094623884.jpg';
 import chiaSeedsImg from '../assets/images/regenerated_image_1787095283231.jpg';
 import macadamiaImg from '../assets/images/regenerated_image_1787095281935.webp';
-import festiveWoodenBoxImg from '../assets/images/regenerated_image_1787258865653.png';
 import blackRaisinsImg from '../assets/images/regenerated_image_1787260830261.png';
 
 export const CATEGORIES: CategoryInfo[] = [
@@ -586,9 +584,9 @@ export const PRODUCTS: Product[] = [
     origin: 'Artisan Workshop, Varanasi',
     description: 'An opulent handcrafted brass-filigree and emerald velvet trunk filled with 4 jars of our finest harvests.',
     longDescription: 'Curated specifically for distinguished celebrations, Diwali, and royal wedding gifting. The bespoke trunk is handmade by traditional brass artisans of Varanasi, lined with forest green velvet, and contains 4 air-tight gold-embossed glass jars: Kashmiri Mamra Almonds (200g), W-180 Jumbo Cashews (200g), Roasted Salted Iranian Pistachios (200g), and Kupwara Snow Walnuts (200g), accompanied by a 1g pure Kashmiri Mongra Saffron vial and an authentic brass diya.',
-    image: royalGiftHamperImg,
+    image: '/assets/aistudio/Brash_Box_for_gifting_030bd32a.jpg',
     gallery: [
-      royalGiftHamperImg,
+      '/assets/aistudio/Brash_Box_for_gifting_030bd32a.jpg',
       '/products/royal-gift-trunk-luxury.jpg'
     ],
     basePrice: 2850,
@@ -1054,9 +1052,9 @@ export const PRODUCTS: Product[] = [
     origin: 'Heritage Artisan Craft, Varanasi',
     description: 'Carved natural teakwood presentation box with antique brass latches, housing 4 airtight glass jars with Mamra Almonds, W-180 Cashews, Iranian Pistachios, and Kashmiri Walnuts.',
     longDescription: 'Crafted by master woodcarvers of Varanasi, this opulent gift chest blends traditional Indian artisanship with world-class dry fruit harvests. Features four 150g airtight gold-accented jars filled with Kashmiri Mamra Almonds, King Cashews W-180, Roasted Iranian Pistachios, and Kupwara Snow Walnuts, finished with a satin ribbon and custom personalized blessing card.',
-    image: festiveWoodenBoxImg,
+    image: '/assets/aistudio/gift_jars_2fbce873.jpg',
     gallery: [
-      festiveWoodenBoxImg,
+      '/assets/aistudio/gift_jars_2fbce873.jpg',
       '/products/royal-gift-trunk-luxury.jpg'
     ],
     basePrice: 1950,

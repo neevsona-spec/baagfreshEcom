@@ -1,21 +1,19 @@
 import React from 'react';
 import { 
   ShieldCheck, 
-  Truck, 
+  MessageCircle, 
   RotateCcw, 
   Award, 
   MapPin, 
   Phone, 
-  Mail, 
-  Heart,
-  Sparkles
+  Mail
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { CATEGORIES } from '../data/products';
 import { BaagfreshLogo } from './BaagfreshLogo';
 
 export const Footer: React.FC = () => {
-  const { setSelectedCategory, setIsProfileOpen, setIsAdminOpen, setIsWholesaleOpen, storeSettings, isAdminAuthenticated, isAdminUser } = useApp();
+  const { setSelectedCategory, setIsCartOpen, setIsProfileOpen, setIsAdminOpen, setIsWholesaleOpen, storeSettings, isAdminAuthenticated, isAdminUser } = useApp();
 
   return (
     <footer className="bg-[#012417] text-[#FAF3E0] border-t border-[#1b4332] pt-12 pb-8">
@@ -37,15 +35,15 @@ export const Footer: React.FC = () => {
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#163a2c] text-[#fed65b] flex items-center justify-center shrink-0">
-              <Truck className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-[#163a2c] text-[#25D366] flex items-center justify-center shrink-0">
+              <MessageCircle className="w-5 h-5" />
             </div>
             <div>
               <h4 className="font-cinzel text-xs sm:text-sm font-bold text-white">
-                Free Express Delivery
+                Direct WhatsApp Ordering
               </h4>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Complimentary dispatch across India on orders above ₹{storeSettings.freeShippingThreshold || 999}.
+                Send your complete GST-calculated order list directly to our desk on WhatsApp.
               </p>
             </div>
           </div>
@@ -70,10 +68,10 @@ export const Footer: React.FC = () => {
             </div>
             <div>
               <h4 className="font-cinzel text-xs sm:text-sm font-bold text-white">
-                Encrypted Checkout
+                Personal Confirmation
               </h4>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                UPI, RuPay, Cards & Doorstep cash verified.
+                Our team personally discusses, confirms, and coordinates every order on WhatsApp.
               </p>
             </div>
           </div>
@@ -102,7 +100,7 @@ export const Footer: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <Mail className="w-3.5 h-3.5 text-[#fed65b]" />
-                <span>Orders & Wholesale: {storeSettings.supportEmail || 'contact@baagfresh.in'}</span>
+                <span>Order &amp; Wholesale: contact only for B2B - baagfresh@gmail.com</span>
               </div>
             </div>
           </div>
@@ -137,10 +135,10 @@ export const Footer: React.FC = () => {
             <ul className="space-y-2 text-slate-400">
               <li>
                 <button
-                  onClick={() => setIsProfileOpen(true)}
+                  onClick={() => setIsCartOpen(true)}
                   className="hover:text-[#fed65b] transition-colors"
                 >
-                  Track Live Consignment
+                  WhatsApp Order Basket
                 </button>
               </li>
               <li>
@@ -148,7 +146,7 @@ export const Footer: React.FC = () => {
                   onClick={() => setIsProfileOpen(true)}
                   className="hover:text-[#fed65b] transition-colors"
                 >
-                  Order History & Invoices
+                  Saved Wishlist
                 </button>
               </li>
               <li>
@@ -179,18 +177,17 @@ export const Footer: React.FC = () => {
           </div>
         </div>
 
-        {/* Bottom Bar: Copyright & Payment Icons */}
+        {/* Bottom Bar: Copyright & WhatsApp Order Desk */}
         <div className="pt-8 border-t border-[#1b4332] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
           <div>
             © 2018 Maan Trading Company. All rights reserved. Handcrafted with reverence in Varanasi.
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap text-[11px]">
-            <span className="px-2 py-1 bg-[#12281d] rounded border border-[#275943] text-slate-300 font-bold">UPI</span>
-            <span className="px-2 py-1 bg-[#12281d] rounded border border-[#275943] text-slate-300 font-bold">RuPay</span>
-            <span className="px-2 py-1 bg-[#12281d] rounded border border-[#275943] text-slate-300 font-bold">Visa</span>
-            <span className="px-2 py-1 bg-[#12281d] rounded border border-[#275943] text-slate-300 font-bold">Mastercard</span>
-            <span className="px-2 py-1 bg-[#12281d] rounded border border-[#275943] text-slate-300 font-bold">COD</span>
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className="px-2.5 py-1 bg-[#12281d] rounded border border-[#275943] text-[#fed65b] font-bold flex items-center gap-1.5">
+              <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
+              <span>WhatsApp Order Desk: {storeSettings.whatsappNumber || storeSettings.supportPhone || '+91 87076 71319'}</span>
+            </span>
           </div>
         </div>
       </div>

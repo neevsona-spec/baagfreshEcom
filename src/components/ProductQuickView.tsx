@@ -5,7 +5,7 @@ import {
   ShoppingBag, 
   Heart, 
   Check, 
-  Truck, 
+  MessageCircle, 
   ShieldCheck, 
   Sparkles, 
   MapPin, 
@@ -13,7 +13,6 @@ import {
   Plus, 
   Minus,
   MessageSquare,
-  ThumbsUp,
   Package
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -41,10 +40,6 @@ const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({ product, 
     product.packOptions[0]?.weight || '250g'
   );
   const [quantity, setQuantity] = useState(1);
-  const [pincode, setPincode] = useState('221001');
-  const [pincodeStatus, setPincodeStatus] = useState<string | null>(
-    'Delivery to Varanasi (221001) in 1-2 Business Days • Free Delivery Eligible'
-  );
   const [activeTab, setActiveTab] = useState<'details' | 'nutrition' | 'reviews'>('details');
 
   // Review form state
@@ -62,22 +57,6 @@ const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({ product, 
   const inWishlist = isInWishlist(product.id);
 
   const images = resolveProductGallery(product);
-
-  const handlePincodeCheck = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanPin = pincode.trim();
-    if (!cleanPin || cleanPin.length < 5) {
-      setPincodeStatus('Please enter a valid 6-digit postal PIN code.');
-      return;
-    }
-    if (cleanPin.startsWith('22')) {
-      setPincodeStatus(`Fast Delivery to Varanasi Zone (${cleanPin}) in 24-48 Hours! Free Express Delivery.`);
-    } else if (cleanPin.startsWith('11') || cleanPin.startsWith('40') || cleanPin.startsWith('56')) {
-      setPincodeStatus(`Express Air Delivery to Metro (${cleanPin}) in 2 Business Days.`);
-    } else {
-      setPincodeStatus(`Verified Delivery to PIN ${cleanPin} in 3-4 Business Days via BlueDart Air.`);
-    }
-  };
 
   const handleAddToCart = () => {
     addToCart(product, selectedWeight, quantity);
@@ -206,8 +185,8 @@ const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({ product, 
                   <div className="flex items-center gap-2 overflow-x-auto pb-1">
                     {images.map((img, idx) => {
                       const pouchLabel = 
-                        idx === 0 ? '250g Pouch' :
-                        idx === 1 ? '500g Pouch' :
+                        idx === 0 ? '250g Jars' :
+                        idx === 1 ? '250gm Jars' :
                         idx === 2 ? '1kg Pouch' :
                         idx === 3 ? 'Kernels' : 'Serving';
 
@@ -229,7 +208,7 @@ const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({ product, 
                           <div className="w-16 h-14 overflow-hidden">
                             <img
                               src={img}
-                              alt={`Pouch ${pouchLabel}`}
+                              alt={pouchLabel}
                               className="w-full h-full object-cover group-hover:scale-110 transition-transform"
                               referrerPolicy="no-referrer"
                             />
@@ -327,7 +306,7 @@ const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({ product, 
                     )}
                   </div>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Price inclusive of all taxes (GST 5%). Free Shipping on orders over ₹999.
+                    Indian GST (5%) calculated automatically in your WhatsApp Order Summary.
                   </span>
                 </div>
 
@@ -426,7 +405,7 @@ const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({ product, 
                   </button>
                 </div>
 
-                {/* Add to Basket and Buy Now CTA */}
+                {/* Add to Basket and WhatsApp Order Summary CTA */}
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <button
                     onClick={handleAddToCart}
@@ -438,40 +417,20 @@ const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({ product, 
 
                   <button
                     onClick={handleBuyNow}
-                    className="py-3 px-4 rounded-xl bg-[#fed65b] hover:bg-[#ffe07a] text-[#012d1d] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all hover:scale-[1.02]"
+                    className="py-3 px-4 rounded-xl bg-[#1ea952] hover:bg-[#178f44] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all hover:scale-[1.02]"
                   >
-                    <Sparkles className="w-4 h-4" />
-                    <span>Buy Now (Instant)</span>
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Order on WhatsApp</span>
                   </button>
                 </div>
 
-                {/* Delivery Pincode Checker */}
-                <div className="mt-4 p-3 bg-[#FAF3E0]/70 dark:bg-[#162f22]/70 rounded-xl border border-[#e8dfc8] dark:border-[#275943]">
-                  <div className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 mb-1.5">
-                    <Truck className="w-4 h-4 text-[#012d1d] dark:text-[#fed65b]" />
-                    <span>Check Delivery Estimate & Cash on Delivery:</span>
-                  </div>
-                  <form onSubmit={handlePincodeCheck} className="flex gap-2">
-                    <input
-                      type="text"
-                      maxLength={6}
-                      value={pincode}
-                      onChange={(e) => setPincode(e.target.value)}
-                      placeholder="Enter 6-digit PIN code"
-                      className="w-full px-3 py-1.5 text-xs bg-white dark:bg-[#0f241a] text-slate-800 dark:text-slate-100 rounded-lg border border-slate-300 dark:border-[#275943] focus:outline-none focus:ring-1 focus:ring-[#c79a1f]"
-                    />
-                    <button
-                      type="submit"
-                      className="px-3 py-1.5 bg-[#012d1d] hover:bg-[#144230] text-[#fed65b] text-xs font-bold rounded-lg shrink-0"
-                    >
-                      Check
-                    </button>
-                  </form>
-                  {pincodeStatus && (
-                    <p className="mt-2 text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
-                      {pincodeStatus}
-                    </p>
-                  )}
+                {/* Direct WhatsApp Enquiry Info */}
+                <div className="mt-4 p-3 bg-[#FAF3E0]/70 dark:bg-[#162f22]/70 rounded-xl border border-[#e8dfc8] dark:border-[#275943] text-xs text-slate-700 dark:text-slate-200 flex items-start gap-2">
+                  <MessageCircle className="w-4 h-4 text-[#1ea952] shrink-0 mt-0.5" />
+                  <p className="text-[11px] leading-relaxed">
+                    Add products to your basket and send your complete order list directly on
+                    WhatsApp. Our team will personally confirm and arrange dispatch with you.
+                  </p>
                 </div>
               </div>
             </div>

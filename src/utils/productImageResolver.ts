@@ -13,7 +13,6 @@ import medjoolDatesImg from '../assets/images/regenerated_image_1786885958518.pn
 import blackPepperImg from '../assets/images/regenerated_image_1786885964083.png';
 import superfoodSeedsImg from '../assets/images/regenerated_image_1786959981759.png';
 import cranberriesImg from '../assets/images/regenerated_image_1786959986461.png';
-import royalGiftHamperImg from '../assets/images/products/royal-gift-trunk-main.jpg';
 import greenRaisinsImg from '../assets/images/regenerated_image_1786885985674.png';
 import clovesWholeImg from '../assets/images/products/cloves-whole.jpg';
 import cinnamonQuillsImg from '../assets/images/regenerated_image_1787092667382.png';
@@ -23,8 +22,11 @@ import apricotsImg from '../assets/images/regenerated_image_1787094151886.webp';
 import pumpkinSeedsImg from '../assets/images/regenerated_image_1787094623884.jpg';
 import chiaSeedsImg from '../assets/images/regenerated_image_1787095283231.jpg';
 import macadamiaImg from '../assets/images/regenerated_image_1787095281935.webp';
-import festiveWoodenBoxImg from '../assets/images/regenerated_image_1787258865653.png';
 import blackRaisinsImg from '../assets/images/regenerated_image_1787260830261.png';
+
+const FESTIVE_WOODEN_BOX_IMG = '/assets/aistudio/gift_jars_2fbce873.jpg';
+const ROYAL_GIFT_HAMPER_IMG = '/assets/aistudio/Brash_Box_for_gifting_030bd32a.jpg';
+const NUTMEG_IMG = '/assets/aistudio/nutmeg_a98aa583.jpg';
 
 /**
  * Centralized Canonical Product Image Resolver
@@ -93,7 +95,7 @@ export function normalizeProductNameToCanonicalId(nameOrTitle: string): string {
     { regex: /\b(bay\s*leaf|bay\s*leaves|tej\s*patta)\b/i, canonicalId: 'bay-leaf' },
     { regex: /\b(turmeric|haldi|curcumin)\b/i, canonicalId: 'turmeric' },
     { regex: /\b(red\s*chilli|red\s*chili|lal\s*mirch)\b/i, canonicalId: 'red-chilli' },
-    { regex: /\b(nutmeg|jaiphal)\b/i, canonicalId: 'nutmeg' },
+    { regex: /\b(nutmeg|nutmegs|jaiphal|jayphal|jaifal)\b/i, canonicalId: 'nutmeg' },
     { regex: /\b(mace|javitri)\b/i, canonicalId: 'mace' },
 
     // Dry Fruits & Nuts
@@ -123,6 +125,7 @@ export function normalizeProductNameToCanonicalId(nameOrTitle: string): string {
     { regex: /\b(superfood\s*seeds|seeds\s*trio)\b/i, canonicalId: 'superfood-seeds-trio' },
 
     // Gifting & Combos
+    { regex: /\b(festive\s*handcrafted\s*wooden|wooden\s*dry\s*fruit\s*box|festive\s*wooden\s*box|bf-shahi-festive-wooden-box)\b/i, canonicalId: 'festive-wooden-box' },
     { regex: /\b(gift\s*trunk|gift\s*hamper|gift\s*box|heritage\s*hamper|brass\s*trunk|festive\s*pack|celebration\s*box)\b/i, canonicalId: 'royal-gift-hamper' },
   ];
 
@@ -304,9 +307,9 @@ export const CANONICAL_IMAGE_REGISTRY: Record<string, ProductImageBundle> = {
   // 13. Royal Gift Hamper / Heritage Brass & Velvet Trunk
   'royal-gift-hamper': {
     canonicalId: 'royal-gift-hamper',
-    main: royalGiftHamperImg,
+    main: ROYAL_GIFT_HAMPER_IMG,
     gallery: [
-      royalGiftHamperImg,
+      ROYAL_GIFT_HAMPER_IMG,
       '/products/royal-gift-trunk-luxury.jpg',
     ],
     exactSubject: 'Varanasi Royal Brass & Velvet Heritage Dry Fruit Hamper',
@@ -357,9 +360,15 @@ export const CANONICAL_IMAGE_REGISTRY: Record<string, ProductImageBundle> = {
   },
   'festive-wooden-box': {
     canonicalId: 'festive-wooden-box',
-    main: festiveWoodenBoxImg,
-    gallery: [festiveWoodenBoxImg, '/products/royal-gift-trunk-luxury.jpg'],
+    main: FESTIVE_WOODEN_BOX_IMG,
+    gallery: [FESTIVE_WOODEN_BOX_IMG, '/products/royal-gift-trunk-luxury.jpg'],
     exactSubject: 'Shahi Festive Handcrafted Wooden Dry Fruit Box',
+  },
+  'nutmeg': {
+    canonicalId: 'nutmeg',
+    main: NUTMEG_IMG,
+    gallery: [NUTMEG_IMG],
+    exactSubject: 'Whole Nutmeg (Jaiphal)',
   },
 };
 

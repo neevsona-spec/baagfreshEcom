@@ -463,10 +463,10 @@ const INITIAL_PROMOS: PromoCodeItem[] = [
 const INITIAL_STORE_SETTINGS: StoreSettings = {
   storeName: 'BAAGFRESH',
   tagline: 'Royal Dry Fruits & Heritage Spices of Varanasi',
-  announcementText: '✨ Free Express Delivery on orders above ₹999 | 100% Nitrogen-Sealed Freshness Guarantee',
+  announcementText: '✨ Order Directly on WhatsApp | 100% Nitrogen-Sealed Freshness Guarantee',
   announcementActive: true,
-  freeShippingThreshold: 999,
-  flatShippingFee: 99,
+  freeShippingThreshold: 0,
+  flatShippingFee: 0,
   taxRatePercent: 5,
   supportPhone: '+91 87076 71319',
   whatsappNumber: '+91 87076 71319',
@@ -1650,10 +1650,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   if (currentPromoObj?.maxDiscount && rawDiscount > currentPromoObj.maxDiscount) {
     rawDiscount = currentPromoObj.maxDiscount;
   }
-  const cartDiscount = rawDiscount;
-  const cartShipping = cartSubtotal >= 999 ? 0 : 99;
-  const cartTax = Math.max(0, (cartSubtotal - cartDiscount)) * (storeSettings.taxRatePercent / 100);
-  const cartTotal = Number(cartSubtotal - cartDiscount + cartShipping + cartTax);
+  const cartDiscount = Math.round(rawDiscount * 100) / 100;
+  const cartShipping = 0;
+  const taxableSubtotal = Math.max(0, cartSubtotal - cartDiscount);
+  const effectiveGstRate = typeof storeSettings.taxRatePercent === 'number' ? storeSettings.taxRatePercent : 5;
+  const cartTax = Math.round(taxableSubtotal * (effectiveGstRate / 100) * 100) / 100;
+  const cartTotal = Math.round((taxableSubtotal + cartTax) * 100) / 100;
 
   // Wishlist
   const toggleWishlist = (product: Product) => {

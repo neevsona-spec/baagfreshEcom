@@ -7,7 +7,6 @@ import { ShopCatalog } from './components/ShopCatalog';
 import { ProductQuickView } from './components/ProductQuickView';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
-import { OrderTrackingModal } from './components/OrderTrackingModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { NotificationsModal } from './components/NotificationsModal';
 import { AuthModal } from './components/AuthModal';
@@ -21,7 +20,6 @@ import {
   Gift, 
   ShieldCheck, 
   Award, 
-  Truck, 
   X, 
   CheckCircle2, 
   AlertCircle, 
@@ -105,7 +103,7 @@ const HeritageStorySection: React.FC = () => {
                 FSSAI Certified
               </div>
               <div className="text-[10px] text-slate-300 font-semibold mt-0.5">
-                100% Natural Products
+                Natural Products
               </div>
             </div>
           </div>
@@ -202,7 +200,6 @@ const AppContent: React.FC = () => {
       <ProductQuickView />
       <CartDrawer />
       <CheckoutModal />
-      <OrderTrackingModal />
       <UserProfileModal />
       <NotificationsModal />
       <AuthModal />

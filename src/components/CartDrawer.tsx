@@ -8,6 +8,7 @@ import {
   Tag,
   MessageCircle,
   Phone,
+  User,
   FileText,
   AlertCircle,
   Info,
@@ -18,10 +19,12 @@ import {
   buildWhatsAppClickToChatUrl,
   formatExactInr,
   formatWhatsAppCartEnquiryMessage,
+  isValidCustomerName,
   isValidCustomerMobile,
   FREE_DELIVERY_THRESHOLD_INR,
 } from '../lib/whatsappTemplates';
 
+const WHATSAPP_NAME_STORAGE_KEY = 'baagfresh_whatsapp_customer_name';
 const WHATSAPP_MOBILE_STORAGE_KEY = 'baagfresh_whatsapp_customer_mobile';
 
 export const CartDrawer: React.FC = () => {
@@ -39,6 +42,7 @@ export const CartDrawer: React.FC = () => {
     removePromoCode,
     updateQuantity,
     removeFromCart,
+    clearCart,
     currency,
     formatPrice,
     setIsCheckoutOpen,
@@ -49,6 +53,13 @@ export const CartDrawer: React.FC = () => {
 
   const [promoInput, setPromoInput] = useState('');
   const [promoMessage, setPromoMessage] = useState<{ success?: boolean; text?: string } | null>(null);
+  const [customerName, setCustomerName] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(WHATSAPP_NAME_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
   const [customerMobile, setCustomerMobile] = useState<string>(() => {
     try {
       return sessionStorage.getItem(WHATSAPP_MOBILE_STORAGE_KEY) || '';
@@ -56,26 +67,42 @@ export const CartDrawer: React.FC = () => {
       return '';
     }
   });
+  const [nameError, setNameError] = useState<string | null>(null);
   const [mobileError, setMobileError] = useState<string | null>(null);
   const [hasOpenedWhatsApp, setHasOpenedWhatsApp] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const mobileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isCartOpen) {
       setHasOpenedWhatsApp(false);
+      setNameError(null);
+      setMobileError(null);
       return;
     }
     try {
-      const saved = sessionStorage.getItem(WHATSAPP_MOBILE_STORAGE_KEY);
-      if (saved) {
-        setCustomerMobile(saved);
+      const savedName = sessionStorage.getItem(WHATSAPP_NAME_STORAGE_KEY);
+      if (savedName) {
+        setCustomerName(savedName);
+      } else if (
+        !customerName &&
+        user?.name &&
+        user.id !== 'usr-guest-00' &&
+        user.name !== 'Guest Patron'
+      ) {
+        setCustomerName(user.name);
+      }
+
+      const savedMobile = sessionStorage.getItem(WHATSAPP_MOBILE_STORAGE_KEY);
+      if (savedMobile) {
+        setCustomerMobile(savedMobile);
       } else if (!customerMobile && user?.phone && user.id !== 'usr-guest-00') {
         setCustomerMobile(user.phone);
       }
     } catch {
       // Ignore storage access errors
     }
-  }, [isCartOpen, user?.phone, user?.id]);
+  }, [isCartOpen, user?.name, user?.phone, user?.id]);
 
   if (!isCartOpen) return null;
 
@@ -86,6 +113,17 @@ export const CartDrawer: React.FC = () => {
 
   const displayMoney = (amount: number) =>
     currency === 'INR' ? formatExactInr(amount) : formatPrice(amount);
+
+  const handleNameChange = (value: string) => {
+    setCustomerName(value);
+    setNameError(null);
+    setHasOpenedWhatsApp(false);
+    try {
+      sessionStorage.setItem(WHATSAPP_NAME_STORAGE_KEY, value);
+    } catch {
+      // Ignore storage access errors
+    }
+  };
 
   const handleMobileChange = (value: string) => {
     setCustomerMobile(value);
@@ -110,7 +148,9 @@ export const CartDrawer: React.FC = () => {
     }
   };
 
+  const nameValid = isValidCustomerName(customerName);
   const mobileValid = isValidCustomerMobile(customerMobile);
+  const canSendWhatsApp = cart.length > 0 && nameValid && mobileValid;
 
   const whatsappMessage = formatWhatsAppCartEnquiryMessage({
     items: cart.map((item) => ({
@@ -124,24 +164,43 @@ export const CartDrawer: React.FC = () => {
     promoCode: appliedPromo || undefined,
     deliveryCharge: cartShipping,
     grandTotal: cartTotal,
+    customerName: customerName.trim(),
     customerMobile: customerMobile.trim(),
   });
 
   const whatsappUrl = buildWhatsAppClickToChatUrl(adminWhatsAppNumber, whatsappMessage);
 
   const handleSendWhatsAppClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (cart.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    if (!nameValid) {
+      e.preventDefault();
+      setNameError('Please enter your name (at least 2 characters).');
+      nameInputRef.current?.focus();
+      return;
+    }
     if (!mobileValid) {
       e.preventDefault();
-      setMobileError('Please enter a valid 10-digit mobile number to send your order on WhatsApp.');
+      setMobileError('Please enter a valid 10-digit WhatsApp mobile number.');
       mobileInputRef.current?.focus();
       return;
     }
+    setNameError(null);
     setMobileError(null);
-    setHasOpenedWhatsApp(true);
+    // Allow the browser to open the WhatsApp chat tab with the prepared message first,
+    // then automatically reset the cart so the customer can start a new order.
+    window.setTimeout(() => {
+      clearCart();
+      setPromoMessage(null);
+      setHasOpenedWhatsApp(true);
+    }, 150);
   };
 
   const handleOpenFullOrderSummary = () => {
     try {
+      sessionStorage.setItem(WHATSAPP_NAME_STORAGE_KEY, customerName);
       sessionStorage.setItem(WHATSAPP_MOBILE_STORAGE_KEY, customerMobile);
     } catch {
       // Ignore storage errors
@@ -192,6 +251,21 @@ export const CartDrawer: React.FC = () => {
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
             {cart.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
+                {hasOpenedWhatsApp && (
+                  <div className="w-full p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-700/60 text-left text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
+                    <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                    <div className="space-y-1">
+                      <div className="font-bold">
+                        WhatsApp Opened — Please Press &ldquo;Send&rdquo; in WhatsApp
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        Your order enquiry is not confirmed or sent until you manually press{' '}
+                        <strong>Send</strong> in WhatsApp. Your basket has been cleared so you can
+                        start adding items for a new order anytime.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <div className="w-20 h-20 rounded-full bg-[#FAF3E0] dark:bg-[#162f22] flex items-center justify-center text-3xl">
                   🧺
                 </div>
@@ -205,7 +279,7 @@ export const CartDrawer: React.FC = () => {
                   onClick={() => setIsCartOpen(false)}
                   className="px-6 py-2.5 bg-[#012d1d] hover:bg-[#144230] text-[#fed65b] text-xs font-bold rounded-full shadow-md transition-all"
                 >
-                  {t('startShopping')}
+                  {hasOpenedWhatsApp ? 'Start a New Order' : t('startShopping')}
                 </button>
               </div>
             ) : (
@@ -370,46 +444,82 @@ export const CartDrawer: React.FC = () => {
                 </p>
               </div>
 
-              {/* Customer Mobile Number (ONLY required customer detail) */}
-              <div className="pt-2 border-t border-slate-200 dark:border-[#275943] space-y-1.5">
-                <label
-                  htmlFor="cart-customer-mobile"
-                  className="block text-xs font-bold text-[#012d1d] dark:text-[#FAF3E0]"
-                >
-                  Your Mobile Number <span className="text-red-600">*</span>
-                </label>
-                <div className="relative">
-                  <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    ref={mobileInputRef}
-                    id="cart-customer-mobile"
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    value={customerMobile}
-                    onChange={(e) => handleMobileChange(e.target.value)}
-                    placeholder="+91 98765 43210"
-                    className={`w-full pl-9 pr-3 py-2 text-xs font-semibold bg-white dark:bg-[#0f241a] text-slate-900 dark:text-slate-100 rounded-xl border focus:outline-none focus:ring-2 ${
-                      mobileError
-                        ? 'border-red-500 focus:ring-red-400/40'
-                        : 'border-slate-300 dark:border-[#275943] focus:ring-[#25D366]/50 focus:border-[#25D366]'
-                    }`}
-                  />
+              {/* Customer Details (ONLY Customer Name & WhatsApp Mobile Number required) */}
+              <div className="pt-2 border-t border-slate-200 dark:border-[#275943] space-y-2.5">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="cart-customer-name"
+                    className="block text-xs font-bold text-[#012d1d] dark:text-[#FAF3E0]"
+                  >
+                    Customer Name <span className="text-red-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      ref={nameInputRef}
+                      id="cart-customer-name"
+                      type="text"
+                      autoComplete="name"
+                      required
+                      value={customerName}
+                      onChange={(e) => handleNameChange(e.target.value)}
+                      placeholder="Enter your full name"
+                      className={`w-full pl-9 pr-3 py-2 text-xs font-semibold bg-white dark:bg-[#0f241a] text-slate-900 dark:text-slate-100 rounded-xl border focus:outline-none focus:ring-2 ${
+                        nameError
+                          ? 'border-red-500 focus:ring-red-400/40'
+                          : 'border-slate-300 dark:border-[#275943] focus:ring-[#25D366]/50 focus:border-[#25D366]'
+                      }`}
+                    />
+                  </div>
+                  {nameError && (
+                    <p className="text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{nameError}</span>
+                    </p>
+                  )}
                 </div>
-                {mobileError && (
-                  <p className="text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1 font-medium">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>{mobileError}</span>
-                  </p>
-                )}
+
+                <div className="space-y-1">
+                  <label
+                    htmlFor="cart-customer-mobile"
+                    className="block text-xs font-bold text-[#012d1d] dark:text-[#FAF3E0]"
+                  >
+                    WhatsApp Mobile Number <span className="text-red-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      ref={mobileInputRef}
+                      id="cart-customer-mobile"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      required
+                      value={customerMobile}
+                      onChange={(e) => handleMobileChange(e.target.value)}
+                      placeholder="+91 98765 43210"
+                      className={`w-full pl-9 pr-3 py-2 text-xs font-semibold bg-white dark:bg-[#0f241a] text-slate-900 dark:text-slate-100 rounded-xl border focus:outline-none focus:ring-2 ${
+                        mobileError
+                          ? 'border-red-500 focus:ring-red-400/40'
+                          : 'border-slate-300 dark:border-[#275943] focus:ring-[#25D366]/50 focus:border-[#25D366]'
+                      }`}
+                    />
+                  </div>
+                  {mobileError && (
+                    <p className="text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1 font-medium">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{mobileError}</span>
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Primary CTA: Send Order on WhatsApp */}
               <a
                 id="cart-send-whatsapp-btn"
-                href={mobileValid ? whatsappUrl : '#'}
-                target={mobileValid ? '_blank' : undefined}
-                rel={mobileValid ? 'noopener noreferrer' : undefined}
+                href={canSendWhatsApp ? whatsappUrl : '#'}
+                target={canSendWhatsApp ? '_blank' : undefined}
+                rel={canSendWhatsApp ? 'noopener noreferrer' : undefined}
                 onClick={handleSendWhatsAppClick}
                 className="w-full py-3.5 px-4 bg-[#1ea952] hover:bg-[#178f44] text-white font-extrabold text-sm rounded-2xl shadow-xl flex items-center justify-center gap-2 transition-all hover:scale-[1.01] border border-emerald-300/30 cursor-pointer"
               >

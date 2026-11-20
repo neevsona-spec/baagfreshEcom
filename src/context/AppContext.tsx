@@ -1599,6 +1599,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCart([]);
     setAppliedPromo('');
     setPromoDiscountRate(0);
+    setPromoFlatDiscount(0);
   };
 
   const applyPromoCode = (code: string) => {

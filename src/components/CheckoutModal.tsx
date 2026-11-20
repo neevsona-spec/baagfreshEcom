@@ -6,6 +6,7 @@ import {
   Plus,
   Minus,
   Phone,
+  User,
   MessageCircle,
   AlertCircle,
   Info,
@@ -21,10 +22,12 @@ import {
   buildWhatsAppClickToChatUrl,
   formatExactInr,
   formatWhatsAppCartEnquiryMessage,
+  isValidCustomerName,
   isValidCustomerMobile,
   FREE_DELIVERY_THRESHOLD_INR,
 } from '../lib/whatsappTemplates';
 
+const WHATSAPP_NAME_STORAGE_KEY = 'baagfresh_whatsapp_customer_name';
 const WHATSAPP_MOBILE_STORAGE_KEY = 'baagfresh_whatsapp_customer_mobile';
 
 export const CheckoutModal: React.FC = () => {
@@ -50,6 +53,13 @@ export const CheckoutModal: React.FC = () => {
     showToast,
   } = useApp();
 
+  const [customerName, setCustomerName] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(WHATSAPP_NAME_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
   const [customerMobile, setCustomerMobile] = useState<string>(() => {
     try {
       return sessionStorage.getItem(WHATSAPP_MOBILE_STORAGE_KEY) || '';
@@ -57,6 +67,7 @@ export const CheckoutModal: React.FC = () => {
       return '';
     }
   });
+  const [nameError, setNameError] = useState<string | null>(null);
   const [mobileError, setMobileError] = useState<string | null>(null);
   const [hasOpenedWhatsApp, setHasOpenedWhatsApp] = useState(false);
   const [showMessagePreview, setShowMessagePreview] = useState(false);
@@ -65,25 +76,39 @@ export const CheckoutModal: React.FC = () => {
   const [promoFeedback, setPromoFeedback] = useState<{ success: boolean; text: string } | null>(
     null
   );
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const mobileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isCheckoutOpen) {
       setHasOpenedWhatsApp(false);
+      setNameError(null);
       setMobileError(null);
       return;
     }
     try {
-      const saved = sessionStorage.getItem(WHATSAPP_MOBILE_STORAGE_KEY);
-      if (saved) {
-        setCustomerMobile(saved);
+      const savedName = sessionStorage.getItem(WHATSAPP_NAME_STORAGE_KEY);
+      if (savedName) {
+        setCustomerName(savedName);
+      } else if (
+        !customerName &&
+        user?.name &&
+        user.id !== 'usr-guest-00' &&
+        user.name !== 'Guest Patron'
+      ) {
+        setCustomerName(user.name);
+      }
+
+      const savedMobile = sessionStorage.getItem(WHATSAPP_MOBILE_STORAGE_KEY);
+      if (savedMobile) {
+        setCustomerMobile(savedMobile);
       } else if (!customerMobile && user?.phone && user.id !== 'usr-guest-00') {
         setCustomerMobile(user.phone);
       }
     } catch {
       // Ignore storage access errors
     }
-  }, [isCheckoutOpen, user?.phone, user?.id]);
+  }, [isCheckoutOpen, user?.name, user?.phone, user?.id]);
 
   if (!isCheckoutOpen) return null;
 
@@ -94,6 +119,17 @@ export const CheckoutModal: React.FC = () => {
 
   const displayMoney = (amount: number) =>
     currency === 'INR' ? formatExactInr(amount) : formatPrice(amount);
+
+  const handleNameChange = (value: string) => {
+    setCustomerName(value);
+    setNameError(null);
+    setHasOpenedWhatsApp(false);
+    try {
+      sessionStorage.setItem(WHATSAPP_NAME_STORAGE_KEY, value);
+    } catch {
+      // Ignore storage errors
+    }
+  };
 
   const handleMobileChange = (value: string) => {
     setCustomerMobile(value);
@@ -116,7 +152,9 @@ export const CheckoutModal: React.FC = () => {
     }
   };
 
+  const nameValid = isValidCustomerName(customerName);
   const mobileValid = isValidCustomerMobile(customerMobile);
+  const canSendWhatsApp = cart.length > 0 && nameValid && mobileValid;
 
   const whatsappMessage = formatWhatsAppCartEnquiryMessage({
     items: cart.map((item) => ({
@@ -130,7 +168,8 @@ export const CheckoutModal: React.FC = () => {
     promoCode: appliedPromo || undefined,
     deliveryCharge: cartShipping,
     grandTotal: cartTotal,
-    customerMobile: customerMobile.trim() || '[Enter Mobile Number]',
+    customerName: customerName.trim() || '[Enter Customer Name]',
+    customerMobile: customerMobile.trim() || '[Enter WhatsApp Mobile Number]',
   });
 
   const whatsappUrl = buildWhatsAppClickToChatUrl(adminWhatsAppNumber, whatsappMessage);
@@ -140,14 +179,27 @@ export const CheckoutModal: React.FC = () => {
       e.preventDefault();
       return;
     }
+    if (!nameValid) {
+      e.preventDefault();
+      setNameError('Please enter your name (at least 2 characters) before opening WhatsApp.');
+      nameInputRef.current?.focus();
+      return;
+    }
     if (!mobileValid) {
       e.preventDefault();
-      setMobileError('Please enter a valid 10-digit mobile number before opening WhatsApp.');
+      setMobileError('Please enter a valid 10-digit WhatsApp mobile number before opening WhatsApp.');
       mobileInputRef.current?.focus();
       return;
     }
+    setNameError(null);
     setMobileError(null);
-    setHasOpenedWhatsApp(true);
+    // Allow the browser to open the WhatsApp chat tab with the prepared message first,
+    // then automatically reset the cart so the customer can start a new order.
+    window.setTimeout(() => {
+      clearCart();
+      setPromoFeedback(null);
+      setHasOpenedWhatsApp(true);
+    }, 150);
   };
 
   const handleCopyMessage = async () => {
@@ -192,12 +244,27 @@ export const CheckoutModal: React.FC = () => {
         {/* Scrollable Content */}
         <div className="overflow-y-auto p-4 sm:p-6 space-y-5 flex-1">
           {cart.length === 0 ? (
-            <div className="py-12 text-center space-y-4">
+            <div className="py-10 text-center space-y-4">
+              {hasOpenedWhatsApp && (
+                <div className="max-w-lg mx-auto p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 text-left flex items-start gap-2.5 text-xs text-amber-950 dark:text-amber-200">
+                  <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                  <div className="space-y-1">
+                    <div className="font-bold">
+                      WhatsApp Chat Opened — Please Press &ldquo;Send&rdquo; in WhatsApp
+                    </div>
+                    <p className="text-[11px] opacity-90 leading-relaxed">
+                      Your order enquiry is not confirmed or sent until you manually press{' '}
+                      <strong>Send</strong> inside WhatsApp. Your basket has been automatically
+                      cleared so you can start adding products for a new order anytime.
+                    </p>
+                  </div>
+                </div>
+              )}
               <div className="w-16 h-16 rounded-full bg-[#FAF3E0] dark:bg-[#162f22] flex items-center justify-center mx-auto">
                 <ShoppingBag className="w-8 h-8 text-[#012d1d] dark:text-[#fed65b]" />
               </div>
               <h3 className="font-cinzel text-lg font-bold text-[#012d1d] dark:text-[#FAF3E0]">
-                Your Order List is Empty
+                {hasOpenedWhatsApp ? 'Ready for a New Order' : 'Your Order List is Empty'}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                 Add products from the BAAGFRESH catalog to automatically prepare your GST-inclusive
@@ -207,7 +274,7 @@ export const CheckoutModal: React.FC = () => {
                 onClick={() => setIsCheckoutOpen(false)}
                 className="px-6 py-2.5 bg-[#012d1d] hover:bg-[#144230] text-[#fed65b] text-xs font-bold rounded-full shadow-md transition-all"
               >
-                Browse Products
+                {hasOpenedWhatsApp ? 'Start a New Order' : 'Browse Products'}
               </button>
             </div>
           ) : (
@@ -414,23 +481,56 @@ export const CheckoutModal: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Right: Customer Mobile Number (ONLY customer field) & Send Button */}
+                {/* Right: Customer Name & WhatsApp Mobile Number (ONLY required details) & Send Button */}
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#11241a] border border-slate-200 dark:border-[#275943] flex flex-col justify-between space-y-4">
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <h4 className="font-cinzel text-xs font-bold uppercase tracking-wider text-[#012d1d] dark:text-[#fed65b]">
-                      Customer Contact
+                      Customer Details
                     </h4>
                     <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                      Only your mobile number is required. No name, email, delivery address, or
-                      online payment is collected on the website.
+                      Only your name and WhatsApp mobile number are required. No delivery address,
+                      PIN code, email, or online payment is collected on this website.
                     </p>
 
-                    <div className="pt-1">
+                    <div className="pt-0.5">
+                      <label
+                        htmlFor="summary-customer-name"
+                        className="block text-xs font-bold text-slate-800 dark:text-slate-100 mb-1"
+                      >
+                        Customer Name <span className="text-red-600">*</span>
+                      </label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                        <input
+                          ref={nameInputRef}
+                          id="summary-customer-name"
+                          type="text"
+                          autoComplete="name"
+                          required
+                          value={customerName}
+                          onChange={(e) => handleNameChange(e.target.value)}
+                          placeholder="Enter your full name"
+                          className={`w-full pl-9 pr-3 py-2.5 text-sm font-bold bg-white dark:bg-[#0f241a] text-slate-900 dark:text-slate-100 rounded-xl border focus:outline-none focus:ring-2 ${
+                            nameError
+                              ? 'border-red-500 focus:ring-red-400/40'
+                              : 'border-slate-300 dark:border-[#275943] focus:ring-[#25D366]/50 focus:border-[#25D366]'
+                          }`}
+                        />
+                      </div>
+                      {nameError && (
+                        <p className="mt-1 text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1 font-semibold">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{nameError}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
                       <label
                         htmlFor="summary-customer-mobile"
-                        className="block text-xs font-bold text-slate-800 dark:text-slate-100 mb-1.5"
+                        className="block text-xs font-bold text-slate-800 dark:text-slate-100 mb-1"
                       >
-                        Customer Mobile Number <span className="text-red-600">*</span>
+                        WhatsApp Mobile Number <span className="text-red-600">*</span>
                       </label>
                       <div className="relative">
                         <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -452,7 +552,7 @@ export const CheckoutModal: React.FC = () => {
                         />
                       </div>
                       {mobileError && (
-                        <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1 font-semibold">
+                        <p className="mt-1 text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1 font-semibold">
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                           <span>{mobileError}</span>
                         </p>
@@ -464,9 +564,9 @@ export const CheckoutModal: React.FC = () => {
                   <div className="space-y-2.5">
                     <a
                       id="summary-send-whatsapp-btn"
-                      href={mobileValid ? whatsappUrl : '#'}
-                      target={mobileValid ? '_blank' : undefined}
-                      rel={mobileValid ? 'noopener noreferrer' : undefined}
+                      href={canSendWhatsApp ? whatsappUrl : '#'}
+                      target={canSendWhatsApp ? '_blank' : undefined}
+                      rel={canSendWhatsApp ? 'noopener noreferrer' : undefined}
                       onClick={handleSendWhatsAppClick}
                       className="w-full py-3.5 px-4 bg-[#1ea952] hover:bg-[#178f44] text-white font-extrabold text-sm rounded-2xl shadow-xl flex items-center justify-center gap-2 transition-all hover:scale-[1.01] border border-emerald-300/30 cursor-pointer"
                     >

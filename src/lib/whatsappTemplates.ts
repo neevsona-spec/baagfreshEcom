@@ -113,7 +113,12 @@ export interface WhatsAppEnquiryInput {
   promoCode?: string;
   deliveryCharge: number;
   grandTotal: number;
+  customerName: string;
   customerMobile: string;
+}
+
+export function isValidCustomerName(rawName: string): boolean {
+  return String(rawName || '').trim().length >= 2;
 }
 
 export function isValidCustomerMobile(rawPhone: string): boolean {
@@ -124,7 +129,7 @@ export function isValidCustomerMobile(rawPhone: string): boolean {
 /**
  * Generates a clean GST-inclusive WhatsApp order enquiry message with complete product list,
  * quantities, GST-inclusive unit prices, item totals, product subtotal (GST inclusive),
- * applicable delivery charge (₹199 or FREE), grand total, and ONLY the customer's mobile number.
+ * applicable delivery charge (₹199 or FREE), grand total, Customer Name, and WhatsApp Mobile Number.
  */
 export function formatWhatsAppCartEnquiryMessage(enquiry: WhatsAppEnquiryInput): string {
   const itemLines = enquiry.items.map((item, idx) => {
@@ -143,6 +148,11 @@ export function formatWhatsAppCartEnquiryMessage(enquiry: WhatsAppEnquiryInput):
   const lines = [
     `*BAAGFRESH — WHATSAPP ORDER ENQUIRY*`,
     `━━━━━━━━━━━━━━━━━━━━━━`,
+    `*CUSTOMER DETAILS*`,
+    `• Customer Name: ${enquiry.customerName.trim()}`,
+    `• WhatsApp Mobile: ${enquiry.customerMobile.trim()}`,
+    ``,
+    `━━━━━━━━━━━━━━━━━━━━━━`,
     `*ORDER LIST*`,
     ...itemLines,
     ``,
@@ -158,8 +168,6 @@ export function formatWhatsAppCartEnquiryMessage(enquiry: WhatsAppEnquiryInput):
     `• *Grand Total: ${formatExactInr(enquiry.grandTotal)}*`,
     `_All Product Prices Are Inclusive of Applicable GST._`,
     `━━━━━━━━━━━━━━━━━━━━━━`,
-    `*Customer Mobile:* ${enquiry.customerMobile.trim()}`,
-    ``,
     `Please confirm availability and next steps for this enquiry.`,
   ];
 

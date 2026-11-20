@@ -15,6 +15,8 @@ import {
   ChevronDown,
   ChevronUp,
   Tag,
+  Paperclip,
+  Hash,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { resolveProductImage } from '../utils/productImageResolver';
@@ -29,6 +31,8 @@ import {
 
 const WHATSAPP_NAME_STORAGE_KEY = 'baagfresh_whatsapp_customer_name';
 const WHATSAPP_MOBILE_STORAGE_KEY = 'baagfresh_whatsapp_customer_mobile';
+const WHATSAPP_UTR_STORAGE_KEY = 'baagfresh_whatsapp_payment_utr';
+const UPI_QR_IMAGE_SRC = '/assets/aistudio/WhatsApp_Image_2026-11-20_at_2.13.25_PM_8b2cc70d.jpeg';
 
 export const CheckoutModal: React.FC = () => {
   const {
@@ -67,6 +71,15 @@ export const CheckoutModal: React.FC = () => {
       return '';
     }
   });
+  const [paymentUtr, setPaymentUtr] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(WHATSAPP_UTR_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
+  const [paymentScreenshot, setPaymentScreenshot] = useState<File | null>(null);
+  const [manualScreenshotNote, setManualScreenshotNote] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [mobileError, setMobileError] = useState<string | null>(null);
   const [hasOpenedWhatsApp, setHasOpenedWhatsApp] = useState(false);
@@ -78,10 +91,12 @@ export const CheckoutModal: React.FC = () => {
   );
   const nameInputRef = useRef<HTMLInputElement>(null);
   const mobileInputRef = useRef<HTMLInputElement>(null);
+  const screenshotInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isCheckoutOpen) {
       setHasOpenedWhatsApp(false);
+      setManualScreenshotNote(null);
       setNameError(null);
       setMobileError(null);
       return;
@@ -104,6 +119,11 @@ export const CheckoutModal: React.FC = () => {
         setCustomerMobile(savedMobile);
       } else if (!customerMobile && user?.phone && user.id !== 'usr-guest-00') {
         setCustomerMobile(user.phone);
+      }
+
+      const savedUtr = sessionStorage.getItem(WHATSAPP_UTR_STORAGE_KEY);
+      if (savedUtr !== null) {
+        setPaymentUtr(savedUtr);
       }
     } catch {
       // Ignore storage access errors
@@ -142,6 +162,27 @@ export const CheckoutModal: React.FC = () => {
     }
   };
 
+  const handleUtrChange = (value: string) => {
+    setPaymentUtr(value);
+    try {
+      sessionStorage.setItem(WHATSAPP_UTR_STORAGE_KEY, value);
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
+  const handleScreenshotChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setPaymentScreenshot(file);
+  };
+
+  const handleRemoveScreenshot = () => {
+    setPaymentScreenshot(null);
+    if (screenshotInputRef.current) {
+      screenshotInputRef.current.value = '';
+    }
+  };
+
   const handleApplyPromo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!promoInput.trim()) return;
@@ -170,11 +211,36 @@ export const CheckoutModal: React.FC = () => {
     grandTotal: cartTotal,
     customerName: customerName.trim() || '[Enter Customer Name]',
     customerMobile: customerMobile.trim() || '[Enter WhatsApp Mobile Number]',
+    paymentUtr: paymentUtr.trim() || undefined,
+    paymentScreenshotName: paymentScreenshot?.name || undefined,
   });
 
   const whatsappUrl = buildWhatsAppClickToChatUrl(adminWhatsAppNumber, whatsappMessage);
 
-  const handleSendWhatsAppClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+  const resetOptionalPaymentFields = () => {
+    setPaymentUtr('');
+    setPaymentScreenshot(null);
+    if (screenshotInputRef.current) {
+      screenshotInputRef.current.value = '';
+    }
+    try {
+      sessionStorage.removeItem(WHATSAPP_UTR_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
+  const openWhatsAppFallbackLink = (url: string) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleSendWhatsAppClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (cart.length === 0) {
       e.preventDefault();
       return;
@@ -193,11 +259,59 @@ export const CheckoutModal: React.FC = () => {
     }
     setNameError(null);
     setMobileError(null);
+
+    const attachedFile = paymentScreenshot;
+
+    if (
+      attachedFile &&
+      typeof navigator !== 'undefined' &&
+      typeof navigator.share === 'function' &&
+      typeof navigator.canShare === 'function'
+    ) {
+      try {
+        const shareData: ShareData = {
+          title: 'BAAGFRESH WhatsApp Order',
+          text: whatsappMessage,
+          files: [attachedFile],
+        };
+        if (navigator.canShare(shareData)) {
+          e.preventDefault();
+          try {
+            await navigator.share(shareData);
+            clearCart();
+            resetOptionalPaymentFields();
+            setPromoFeedback(null);
+            setManualScreenshotNote(null);
+            setHasOpenedWhatsApp(true);
+            return;
+          } catch (shareErr: any) {
+            if (shareErr?.name === 'AbortError') {
+              return;
+            }
+            openWhatsAppFallbackLink(whatsappUrl);
+            window.setTimeout(() => {
+              clearCart();
+              resetOptionalPaymentFields();
+              setPromoFeedback(null);
+              setManualScreenshotNote(attachedFile.name);
+              setHasOpenedWhatsApp(true);
+            }, 150);
+            return;
+          }
+        }
+      } catch {
+        // Proceed with direct WhatsApp link below
+      }
+    }
+
     // Allow the browser to open the WhatsApp chat tab with the prepared message first,
     // then automatically reset the cart so the customer can start a new order.
+    const manualFileName = attachedFile?.name || null;
     window.setTimeout(() => {
       clearCart();
+      resetOptionalPaymentFields();
       setPromoFeedback(null);
+      setManualScreenshotNote(manualFileName);
       setHasOpenedWhatsApp(true);
     }, 150);
   };
@@ -257,6 +371,12 @@ export const CheckoutModal: React.FC = () => {
                       <strong>Send</strong> inside WhatsApp. Your basket has been automatically
                       cleared so you can start adding products for a new order anytime.
                     </p>
+                    {manualScreenshotNote && (
+                      <p className="text-[11px] font-semibold leading-relaxed text-amber-950 dark:text-amber-100">
+                        Please manually attach your payment screenshot ({manualScreenshotNote})
+                        inside the WhatsApp chat if you wish to share it.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -385,9 +505,9 @@ export const CheckoutModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* Bottom Grid: Promo + GST-Inclusive Totals & Delivery + Customer Mobile */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Left: GST-Inclusive Subtotal, Delivery Charge & Grand Total */}
+              {/* Bottom Grid: GST-Inclusive Totals + Scan to Pay QR & Customer/Optional Payment Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                {/* Left: GST-Inclusive Subtotal, Delivery Charge, Grand Total + Original UPI QR Code + Payment Instructions */}
                 <div className="p-4 rounded-2xl bg-[#FAF3E0]/70 dark:bg-[#162f22] border border-[#e8dfc8] dark:border-[#275943] space-y-3">
                   <h4 className="font-cinzel text-xs font-bold uppercase tracking-wider text-[#012d1d] dark:text-[#fed65b]">
                     Order Summary &amp; Delivery
@@ -479,9 +599,49 @@ export const CheckoutModal: React.FC = () => {
                       All Product Prices Are Inclusive of Applicable GST.
                     </p>
                   </div>
+
+                  {/* Scan to Pay: Original UPI QR Code directly below Grand Total */}
+                  <div className="p-3.5 rounded-2xl bg-white dark:bg-[#0f241a] border border-slate-200 dark:border-[#275943] text-center space-y-2.5">
+                    <div>
+                      <h5 className="font-cinzel text-xs font-bold text-[#012d1d] dark:text-[#fed65b]">
+                        Scan to Pay
+                      </h5>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                        Pay the order amount using this QR code.
+                      </p>
+                      <p className="text-xs font-extrabold text-[#012d1d] dark:text-[#fed65b] mt-1 tabular-nums">
+                        Amount Payable: {displayMoney(cartTotal)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-xl border border-slate-200 inline-block max-w-[220px] w-full mx-auto">
+                      <img
+                        src={UPI_QR_IMAGE_SRC}
+                        alt="BAAGFRESH UPI QR Code — Scan to Pay"
+                        className="w-full h-auto object-contain mx-auto"
+                      />
+                    </div>
+
+                    {/* Small Payment Instructions Note */}
+                    <div className="text-left pt-2 border-t border-slate-200 dark:border-[#275943] space-y-1.5 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                      <div className="font-bold text-[#012d1d] dark:text-[#fed65b]">
+                        Payment Instructions
+                      </div>
+                      <p>
+                        After placing your order, you will receive a WhatsApp message from us. Once
+                        your payment is received and verified, we will personally confirm your
+                        payment and order through WhatsApp. Delivery updates will also be shared on
+                        WhatsApp.
+                      </p>
+                      <p>
+                        You can also place your order first and discuss payment with us directly on
+                        WhatsApp.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Right: Customer Name & WhatsApp Mobile Number (ONLY required details) & Send Button */}
+                {/* Right: Customer Name, WhatsApp Mobile Number, Optional UTR & Screenshot & Send Button */}
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#11241a] border border-slate-200 dark:border-[#275943] flex flex-col justify-between space-y-4">
                   <div className="space-y-2.5">
                     <h4 className="font-cinzel text-xs font-bold uppercase tracking-wider text-[#012d1d] dark:text-[#fed65b]">
@@ -489,7 +649,7 @@ export const CheckoutModal: React.FC = () => {
                     </h4>
                     <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
                       Only your name and WhatsApp mobile number are required. No delivery address,
-                      PIN code, email, or online payment is collected on this website.
+                      PIN code, or email is collected on this website.
                     </p>
 
                     <div className="pt-0.5">
@@ -558,6 +718,71 @@ export const CheckoutModal: React.FC = () => {
                         </p>
                       )}
                     </div>
+
+                    {/* Optional Payment Details near WhatsApp Order Button */}
+                    <div className="pt-2.5 border-t border-slate-200 dark:border-[#275943] space-y-2.5">
+                      <div>
+                        <label
+                          htmlFor="summary-payment-utr"
+                          className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1"
+                        >
+                          Payment UTR Number (Optional)
+                        </label>
+                        <div className="relative">
+                          <Hash className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                          <input
+                            id="summary-payment-utr"
+                            type="text"
+                            value={paymentUtr}
+                            onChange={(e) => handleUtrChange(e.target.value)}
+                            placeholder="Enter UTR number after payment"
+                            className="w-full pl-9 pr-3 py-2 text-xs font-semibold bg-white dark:bg-[#0f241a] text-slate-900 dark:text-slate-100 rounded-xl border border-slate-300 dark:border-[#275943] focus:outline-none focus:ring-1 focus:ring-[#c79a1f]"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="summary-payment-screenshot"
+                          className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1"
+                        >
+                          Payment Screenshot (Optional)
+                        </label>
+                        <input
+                          ref={screenshotInputRef}
+                          id="summary-payment-screenshot"
+                          type="file"
+                          accept="image/*"
+                          onChange={handleScreenshotChange}
+                          className="hidden"
+                        />
+                        {paymentScreenshot ? (
+                          <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white dark:bg-[#0f241a] border border-slate-300 dark:border-[#275943] text-xs">
+                            <span className="flex items-center gap-1.5 truncate text-slate-800 dark:text-slate-200 font-medium">
+                              <Paperclip className="w-3.5 h-3.5 text-[#1ea952] shrink-0" />
+                              <span className="truncate">{paymentScreenshot.name}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleRemoveScreenshot}
+                              className="text-slate-400 hover:text-red-500 shrink-0"
+                              aria-label="Remove payment screenshot"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => screenshotInputRef.current?.click()}
+                            className="w-full px-3 py-2 rounded-xl bg-white dark:bg-[#0f241a] hover:bg-slate-100 dark:hover:bg-[#162f22] text-slate-700 dark:text-slate-200 border border-dashed border-slate-300 dark:border-[#275943] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Select Payment Screenshot (Optional)</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Single Clear Primary CTA */}
@@ -581,37 +806,6 @@ export const CheckoutModal: React.FC = () => {
                   </div>
                 </div>
               </div>
-
-              {/* Honest Manual-Send Confirmation Notice (Never claims automatic order submission) */}
-              {hasOpenedWhatsApp && (
-                <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-start gap-2.5 text-xs text-amber-950 dark:text-amber-200">
-                    <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-                    <div className="space-y-0.5">
-                      <div className="font-bold">
-                        WhatsApp Chat Opened — Please Press &ldquo;Send&rdquo; in WhatsApp
-                      </div>
-                      <p className="text-[11px] opacity-90">
-                        Your enquiry is not submitted until you manually press <strong>Send</strong>{' '}
-                        inside WhatsApp. Our team will personally discuss, confirm, and arrange
-                        dispatch with you on WhatsApp.
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearCart();
-                      setHasOpenedWhatsApp(false);
-                      setIsCheckoutOpen(false);
-                    }}
-                    className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#0f241a] hover:bg-amber-100 dark:hover:bg-[#162f22] text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 text-xs font-bold shrink-0 cursor-pointer"
-                  >
-                    Clear Basket After Sending
-                  </button>
-                </div>
-              )}
 
               {/* Collapsible Pre-filled WhatsApp Message Preview */}
               <div className="rounded-2xl border border-slate-200 dark:border-[#275943] overflow-hidden">

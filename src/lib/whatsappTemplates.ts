@@ -115,6 +115,8 @@ export interface WhatsAppEnquiryInput {
   grandTotal: number;
   customerName: string;
   customerMobile: string;
+  paymentUtr?: string;
+  paymentScreenshotName?: string;
 }
 
 export function isValidCustomerName(rawName: string): boolean {
@@ -129,7 +131,8 @@ export function isValidCustomerMobile(rawPhone: string): boolean {
 /**
  * Generates a clean GST-inclusive WhatsApp order enquiry message with complete product list,
  * quantities, GST-inclusive unit prices, item totals, product subtotal (GST inclusive),
- * applicable delivery charge (₹199 or FREE), grand total, Customer Name, and WhatsApp Mobile Number.
+ * applicable delivery charge (₹199 or FREE), grand total, Customer Name, WhatsApp Mobile Number,
+ * and optional UTR / payment screenshot details if provided.
  */
 export function formatWhatsAppCartEnquiryMessage(enquiry: WhatsAppEnquiryInput): string {
   const itemLines = enquiry.items.map((item, idx) => {
@@ -144,6 +147,19 @@ export function formatWhatsAppCartEnquiryMessage(enquiry: WhatsAppEnquiryInput):
     Number(enquiry.deliveryCharge || 0) === 0
       ? 'FREE (₹0)'
       : formatExactInr(enquiry.deliveryCharge);
+
+  const trimmedUtr = (enquiry.paymentUtr || '').trim();
+  const trimmedScreenshot = (enquiry.paymentScreenshotName || '').trim();
+  const optionalPaymentLines: string[] = [];
+  if (trimmedUtr || trimmedScreenshot) {
+    optionalPaymentLines.push(``, `*OPTIONAL PAYMENT DETAILS (SUBJECT TO VERIFICATION)*`);
+    if (trimmedUtr) {
+      optionalPaymentLines.push(`• Payment UTR Number: ${trimmedUtr}`);
+    }
+    if (trimmedScreenshot) {
+      optionalPaymentLines.push(`• Payment Screenshot: ${trimmedScreenshot} (attaching in chat)`);
+    }
+  }
 
   const lines = [
     `*BAAGFRESH — WHATSAPP ORDER ENQUIRY*`,
@@ -167,6 +183,7 @@ export function formatWhatsAppCartEnquiryMessage(enquiry: WhatsAppEnquiryInput):
     `• Delivery Charge: ${deliveryLabel}`,
     `• *Grand Total: ${formatExactInr(enquiry.grandTotal)}*`,
     `_All Product Prices Are Inclusive of Applicable GST._`,
+    ...optionalPaymentLines,
     `━━━━━━━━━━━━━━━━━━━━━━`,
     `Please confirm availability and next steps for this enquiry.`,
   ];

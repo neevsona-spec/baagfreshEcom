@@ -184,10 +184,18 @@ export const Footer: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 text-[11px]">
-            <span className="px-2.5 py-1 bg-[#12281d] rounded border border-[#275943] text-[#fed65b] font-bold flex items-center gap-1.5">
+            <a
+              href="https://wa.me/message/WCUZWMZI26EKF1"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1 bg-[#12281d] hover:bg-[#1a3a2a] rounded border border-[#275943] hover:border-[#fed65b]/60 text-[#fed65b] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Direct Enquiry on WhatsApp"
+            >
               <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
-              <span>WhatsApp Order Desk: {storeSettings.whatsappNumber || storeSettings.supportPhone || '+91 87076 71319'}</span>
-            </span>
+              <span className="underline underline-offset-2">
+                WhatsApp Order Desk: {storeSettings.whatsappNumber || storeSettings.supportPhone || '+91 87076 71319'}
+              </span>
+            </a>
           </div>
         </div>
       </div>

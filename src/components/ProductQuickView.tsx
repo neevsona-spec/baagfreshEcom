@@ -306,7 +306,7 @@ const ProductQuickViewModal: React.FC<ProductQuickViewModalProps> = ({ product, 
                     )}
                   </div>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Indian GST (5%) calculated automatically in your WhatsApp Order Summary.
+                    All Product Prices Are Inclusive of Applicable GST.
                   </span>
                 </div>
 

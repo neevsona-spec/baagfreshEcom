@@ -81,13 +81,37 @@ function formatInr(amount: number): string {
   return formatExactInr(amount);
 }
 
+export const FREE_DELIVERY_THRESHOLD_INR = 2000;
+export const FLAT_DELIVERY_CHARGE_INR = 199;
+
+/**
+ * Mandatory BAAGFRESH delivery charge rule:
+ * - Cart product subtotal >= ₹2,000 => FREE DELIVERY (₹0)
+ * - Cart product subtotal < ₹2,000 (and > ₹0) => Flat ₹199
+ */
+export function calculateDeliveryCharge(productSubtotal: number): number {
+  const safeSubtotal = Math.max(0, Number(productSubtotal || 0));
+  if (safeSubtotal <= 0) return 0;
+  return safeSubtotal >= FREE_DELIVERY_THRESHOLD_INR ? 0 : FLAT_DELIVERY_CHARGE_INR;
+}
+
+/**
+ * Extracts the embedded GST component from a GST-inclusive selling price
+ * for internal reference only. Never add this on top of selling prices or Grand Total.
+ */
+export function extractInclusiveGstComponent(inclusiveAmount: number, gstRatePercent: number): number {
+  const amount = Math.max(0, Number(inclusiveAmount || 0));
+  const rate = Math.max(0, Number(gstRatePercent || 0));
+  if (amount <= 0 || rate <= 0) return 0;
+  return Math.round((amount - amount / (1 + rate / 100)) * 100) / 100;
+}
+
 export interface WhatsAppEnquiryInput {
   items: WhatsAppOrderItem[];
   subtotal: number;
   discount?: number;
   promoCode?: string;
-  gstRatePercent: number;
-  gstAmount: number;
+  deliveryCharge: number;
   grandTotal: number;
   customerMobile: string;
 }
@@ -98,23 +122,23 @@ export function isValidCustomerMobile(rawPhone: string): boolean {
 }
 
 /**
- * Generates a clean WhatsApp order enquiry message with complete product list,
- * quantities, unit prices, item totals, subtotal, Indian GST, grand total,
- * and ONLY the customer's mobile number.
+ * Generates a clean GST-inclusive WhatsApp order enquiry message with complete product list,
+ * quantities, GST-inclusive unit prices, item totals, product subtotal (GST inclusive),
+ * applicable delivery charge (₹199 or FREE), grand total, and ONLY the customer's mobile number.
  */
 export function formatWhatsAppCartEnquiryMessage(enquiry: WhatsAppEnquiryInput): string {
-  const gstRate = Number.isFinite(enquiry.gstRatePercent) ? enquiry.gstRatePercent : 5;
-  const halfGstRate = Number((gstRate / 2).toFixed(2));
-  const cgstAmount = Math.round((enquiry.gstAmount / 2) * 100) / 100;
-  const sgstAmount = Math.round((enquiry.gstAmount - cgstAmount) * 100) / 100;
-
   const itemLines = enquiry.items.map((item, idx) => {
     const unitPrice = Number(item.price || 0);
     const qty = Number(item.quantity || 1);
     const itemTotal = unitPrice * qty;
     const weightTag = item.weight ? ` (${item.weight})` : '';
-    return `${idx + 1}. *${item.name}*${weightTag}\n   Qty: ${qty} × ${formatExactInr(unitPrice)} = *${formatExactInr(itemTotal)}*`;
+    return `${idx + 1}. *${item.name}*${weightTag}\n   Qty: ${qty} × ${formatExactInr(unitPrice)} (GST Incl.) = *${formatExactInr(itemTotal)}*`;
   });
+
+  const deliveryLabel =
+    Number(enquiry.deliveryCharge || 0) === 0
+      ? 'FREE (₹0)'
+      : formatExactInr(enquiry.deliveryCharge);
 
   const lines = [
     `*BAAGFRESH — WHATSAPP ORDER ENQUIRY*`,
@@ -123,15 +147,16 @@ export function formatWhatsAppCartEnquiryMessage(enquiry: WhatsAppEnquiryInput):
     ...itemLines,
     ``,
     `━━━━━━━━━━━━━━━━━━━━━━`,
-    `*PRICE & GST SUMMARY*`,
-    `• Subtotal: ${formatExactInr(enquiry.subtotal)}`,
+    `*ORDER SUMMARY*`,
+    `• Product Subtotal (GST Inclusive): ${formatExactInr(enquiry.subtotal)}`,
     ...(enquiry.discount && enquiry.discount > 0
       ? [
           `• Discount${enquiry.promoCode ? ` (${enquiry.promoCode})` : ''}: -${formatExactInr(enquiry.discount)}`,
         ]
       : []),
-    `• GST (${gstRate}% — CGST ${halfGstRate}% ${formatExactInr(cgstAmount)} + SGST ${halfGstRate}% ${formatExactInr(sgstAmount)}): ${formatExactInr(enquiry.gstAmount)}`,
+    `• Delivery Charge: ${deliveryLabel}`,
     `• *Grand Total: ${formatExactInr(enquiry.grandTotal)}*`,
+    `_All Product Prices Are Inclusive of Applicable GST._`,
     `━━━━━━━━━━━━━━━━━━━━━━`,
     `*Customer Mobile:* ${enquiry.customerMobile.trim()}`,
     ``,

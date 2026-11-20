@@ -19,6 +19,7 @@ import {
   formatExactInr,
   formatWhatsAppCartEnquiryMessage,
   isValidCustomerMobile,
+  FREE_DELIVERY_THRESHOLD_INR,
 } from '../lib/whatsappTemplates';
 
 const WHATSAPP_MOBILE_STORAGE_KEY = 'baagfresh_whatsapp_customer_mobile';
@@ -31,7 +32,7 @@ export const CartDrawer: React.FC = () => {
     cartCount,
     cartSubtotal,
     cartDiscount,
-    cartTax,
+    cartShipping,
     cartTotal,
     appliedPromo,
     applyPromoCode,
@@ -78,10 +79,10 @@ export const CartDrawer: React.FC = () => {
 
   if (!isCartOpen) return null;
 
-  const gstRatePercent =
-    typeof storeSettings.taxRatePercent === 'number' ? storeSettings.taxRatePercent : 5;
   const adminWhatsAppNumber =
     storeSettings.whatsappNumber || storeSettings.supportPhone || '+91 87076 71319';
+  const netProductSubtotal = Math.max(0, cartSubtotal - cartDiscount);
+  const remainingForFreeDelivery = Math.max(0, FREE_DELIVERY_THRESHOLD_INR - netProductSubtotal);
 
   const displayMoney = (amount: number) =>
     currency === 'INR' ? formatExactInr(amount) : formatPrice(amount);
@@ -121,8 +122,7 @@ export const CartDrawer: React.FC = () => {
     subtotal: cartSubtotal,
     discount: cartDiscount,
     promoCode: appliedPromo || undefined,
-    gstRatePercent,
-    gstAmount: cartTax,
+    deliveryCharge: cartShipping,
     grandTotal: cartTotal,
     customerMobile: customerMobile.trim(),
   });
@@ -171,14 +171,20 @@ export const CartDrawer: React.FC = () => {
             </button>
           </div>
 
-          {/* WhatsApp Direct Enquiry Strip */}
+          {/* Delivery Policy Strip */}
           <div className="bg-[#012d1d] text-[#FAF3E0] px-4 py-2.5 text-xs flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 font-semibold">
               <MessageCircle className="w-3.5 h-3.5 text-[#25D366] shrink-0" />
-              <span>Direct WhatsApp Order Enquiry</span>
+              <span>
+                {cart.length === 0
+                  ? 'FREE Delivery on ₹2,000+ • Flat ₹199 below'
+                  : remainingForFreeDelivery > 0
+                  ? `Add ${displayMoney(remainingForFreeDelivery)} more for FREE Delivery`
+                  : 'FREE Delivery Unlocked (₹2,000+ Order)'}
+              </span>
             </span>
             <span className="text-[11px] text-[#fed65b] font-bold shrink-0">
-              GST {gstRatePercent}% Included Below
+              GST Inclusive
             </span>
           </div>
 
@@ -333,10 +339,10 @@ export const CartDrawer: React.FC = () => {
                 )}
               </div>
 
-              {/* Price & Indian GST Calculation Summary */}
+              {/* GST-Inclusive Price & Delivery Charge Summary */}
               <div className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300 pt-2 border-t border-slate-200 dark:border-[#275943]">
                 <div className="flex justify-between">
-                  <span>Subtotal:</span>
+                  <span>Product Subtotal (GST Inclusive):</span>
                   <span className="font-semibold tabular-nums">{displayMoney(cartSubtotal)}</span>
                 </div>
                 {cartDiscount > 0 && (
@@ -346,13 +352,22 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span>GST ({gstRatePercent}% Indian GST):</span>
-                  <span className="font-semibold tabular-nums">{displayMoney(cartTax)}</span>
+                  <span>Delivery Charge:</span>
+                  <span className="font-semibold tabular-nums">
+                    {cartShipping === 0 ? (
+                      <strong className="text-emerald-700 dark:text-emerald-400">FREE</strong>
+                    ) : (
+                      displayMoney(cartShipping)
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm font-extrabold text-[#012d1d] dark:text-[#fed65b] pt-1.5 border-t border-slate-200 dark:border-[#275943]">
                   <span>Grand Total:</span>
                   <span className="text-base tabular-nums">{displayMoney(cartTotal)}</span>
                 </div>
+                <p className="text-[10px] font-semibold text-emerald-800 dark:text-emerald-300 pt-0.5">
+                  All Product Prices Are Inclusive of Applicable GST.
+                </p>
               </div>
 
               {/* Customer Mobile Number (ONLY required customer detail) */}

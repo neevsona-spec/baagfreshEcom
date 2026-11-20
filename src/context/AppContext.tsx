@@ -57,6 +57,11 @@ import {
   apiCheckAdminRole,
   apiAdminLogout
 } from '../lib/supabase';
+import {
+  calculateDeliveryCharge,
+  FREE_DELIVERY_THRESHOLD_INR,
+  FLAT_DELIVERY_CHARGE_INR,
+} from '../lib/whatsappTemplates';
 
 export function generateTrackingSteps(status: string): TrackingStep[] {
   const norm = (status || '').toLowerCase();
@@ -465,8 +470,8 @@ const INITIAL_STORE_SETTINGS: StoreSettings = {
   tagline: 'Royal Dry Fruits & Heritage Spices of Varanasi',
   announcementText: '✨ Order Directly on WhatsApp | 100% Nitrogen-Sealed Freshness Guarantee',
   announcementActive: true,
-  freeShippingThreshold: 0,
-  flatShippingFee: 0,
+  freeShippingThreshold: FREE_DELIVERY_THRESHOLD_INR,
+  flatShippingFee: FLAT_DELIVERY_CHARGE_INR,
   taxRatePercent: 5,
   supportPhone: '+91 87076 71319',
   whatsappNumber: '+91 87076 71319',
@@ -1651,11 +1656,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     rawDiscount = currentPromoObj.maxDiscount;
   }
   const cartDiscount = Math.round(rawDiscount * 100) / 100;
-  const cartShipping = 0;
-  const taxableSubtotal = Math.max(0, cartSubtotal - cartDiscount);
-  const effectiveGstRate = typeof storeSettings.taxRatePercent === 'number' ? storeSettings.taxRatePercent : 5;
-  const cartTax = Math.round(taxableSubtotal * (effectiveGstRate / 100) * 100) / 100;
-  const cartTotal = Math.round((taxableSubtotal + cartTax) * 100) / 100;
+  const netProductSubtotal = Math.round(Math.max(0, cartSubtotal - cartDiscount) * 100) / 100;
+  const cartShipping = calculateDeliveryCharge(netProductSubtotal);
+  // All product prices are already GST-inclusive; never add extra GST on top of subtotal or Grand Total.
+  const cartTax = 0;
+  const cartTotal = Math.round((netProductSubtotal + cartShipping) * 100) / 100;
 
   // Wishlist
   const toggleWishlist = (product: Product) => {

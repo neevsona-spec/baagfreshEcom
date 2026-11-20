@@ -22,6 +22,7 @@ import {
   formatExactInr,
   formatWhatsAppCartEnquiryMessage,
   isValidCustomerMobile,
+  FREE_DELIVERY_THRESHOLD_INR,
 } from '../lib/whatsappTemplates';
 
 const WHATSAPP_MOBILE_STORAGE_KEY = 'baagfresh_whatsapp_customer_mobile';
@@ -34,7 +35,7 @@ export const CheckoutModal: React.FC = () => {
     cartCount,
     cartSubtotal,
     cartDiscount,
-    cartTax,
+    cartShipping,
     cartTotal,
     appliedPromo,
     applyPromoCode,
@@ -86,13 +87,10 @@ export const CheckoutModal: React.FC = () => {
 
   if (!isCheckoutOpen) return null;
 
-  const gstRatePercent =
-    typeof storeSettings.taxRatePercent === 'number' ? storeSettings.taxRatePercent : 5;
-  const halfGstRate = Number((gstRatePercent / 2).toFixed(2));
-  const cgstAmount = Math.round((cartTax / 2) * 100) / 100;
-  const sgstAmount = Math.round((cartTax - cgstAmount) * 100) / 100;
   const adminWhatsAppNumber =
     storeSettings.whatsappNumber || storeSettings.supportPhone || '+91 87076 71319';
+  const netProductSubtotal = Math.max(0, cartSubtotal - cartDiscount);
+  const remainingForFreeDelivery = Math.max(0, FREE_DELIVERY_THRESHOLD_INR - netProductSubtotal);
 
   const displayMoney = (amount: number) =>
     currency === 'INR' ? formatExactInr(amount) : formatPrice(amount);
@@ -130,8 +128,7 @@ export const CheckoutModal: React.FC = () => {
     subtotal: cartSubtotal,
     discount: cartDiscount,
     promoCode: appliedPromo || undefined,
-    gstRatePercent,
-    gstAmount: cartTax,
+    deliveryCharge: cartShipping,
     grandTotal: cartTotal,
     customerMobile: customerMobile.trim() || '[Enter Mobile Number]',
   });
@@ -203,8 +200,8 @@ export const CheckoutModal: React.FC = () => {
                 Your Order List is Empty
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-                Add products from the BAAGFRESH catalog to automatically prepare your WhatsApp order
-                list with GST calculation.
+                Add products from the BAAGFRESH catalog to automatically prepare your GST-inclusive
+                WhatsApp order list.
               </p>
               <button
                 onClick={() => setIsCheckoutOpen(false)}
@@ -230,7 +227,7 @@ export const CheckoutModal: React.FC = () => {
                 {/* Desktop Table Header */}
                 <div className="hidden sm:grid sm:grid-cols-12 gap-3 px-4 py-2 bg-slate-50 dark:bg-[#0d1e15] border-b border-slate-200 dark:border-[#275943] text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   <div className="col-span-5">Product Name</div>
-                  <div className="col-span-2 text-right">Unit Price</div>
+                  <div className="col-span-2 text-right">Unit Price (GST Incl.)</div>
                   <div className="col-span-2 text-center">Quantity</div>
                   <div className="col-span-3 text-right">Item Total</div>
                 </div>
@@ -321,12 +318,12 @@ export const CheckoutModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* Bottom Grid: Promo + Price/GST Breakdown & Customer Mobile */}
+              {/* Bottom Grid: Promo + GST-Inclusive Totals & Delivery + Customer Mobile */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Left: Indian GST & Grand Total Calculation */}
+                {/* Left: GST-Inclusive Subtotal, Delivery Charge & Grand Total */}
                 <div className="p-4 rounded-2xl bg-[#FAF3E0]/70 dark:bg-[#162f22] border border-[#e8dfc8] dark:border-[#275943] space-y-3">
                   <h4 className="font-cinzel text-xs font-bold uppercase tracking-wider text-[#012d1d] dark:text-[#fed65b]">
-                    Subtotal, GST &amp; Grand Total
+                    Order Summary &amp; Delivery
                   </h4>
 
                   {/* Optional Promo Code */}
@@ -377,7 +374,7 @@ export const CheckoutModal: React.FC = () => {
 
                   <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300 pt-2 border-t border-slate-200 dark:border-[#275943]">
                     <div className="flex justify-between">
-                      <span>Subtotal</span>
+                      <span>Product Subtotal (GST Inclusive)</span>
                       <span className="font-bold tabular-nums">{displayMoney(cartSubtotal)}</span>
                     </div>
 
@@ -390,19 +387,30 @@ export const CheckoutModal: React.FC = () => {
 
                     <div className="flex justify-between">
                       <span>
-                        GST ({gstRatePercent}% Indian GST)
+                        Delivery Charge
                         <span className="block text-[10px] text-slate-500 dark:text-slate-400">
-                          CGST {halfGstRate}% ({displayMoney(cgstAmount)}) + SGST {halfGstRate}% (
-                          {displayMoney(sgstAmount)})
+                          {remainingForFreeDelivery > 0
+                            ? `Flat ₹199 below ₹2,000 (Add ${displayMoney(remainingForFreeDelivery)} for FREE)`
+                            : 'FREE Delivery on orders ₹2,000 & above'}
                         </span>
                       </span>
-                      <span className="font-bold tabular-nums">{displayMoney(cartTax)}</span>
+                      <span className="font-bold tabular-nums">
+                        {cartShipping === 0 ? (
+                          <span className="text-emerald-700 dark:text-emerald-400">FREE (₹0)</span>
+                        ) : (
+                          displayMoney(cartShipping)
+                        )}
+                      </span>
                     </div>
 
                     <div className="flex justify-between items-baseline text-sm font-black text-[#012d1d] dark:text-[#fed65b] pt-2 border-t border-slate-300 dark:border-[#275943]">
                       <span>Grand Total</span>
                       <span className="text-lg tabular-nums">{displayMoney(cartTotal)}</span>
                     </div>
+
+                    <p className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 pt-1">
+                      All Product Prices Are Inclusive of Applicable GST.
+                    </p>
                   </div>
                 </div>
 
